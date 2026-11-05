@@ -18,7 +18,9 @@ The token is read from the BOT_TOKEN environment variable only.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -54,6 +56,45 @@ lang_store = LangStore(Path(tempfile.gettempdir()) / "subfa_lang_prefs.json")
 # the effective cap honestly instead of failing mid job.
 TELEGRAM_DOWNLOAD_CAP = 20 * 1024 * 1024
 TELEGRAM_UPLOAD_CAP = 50 * 1024 * 1024
+
+
+def probe_video_meta(path: Path) -> dict:
+    """Display hints for send_video, probed with ffprobe.
+
+    Telegram frames the in-chat player from the width, height and
+    duration passed with the upload; without them it falls back to
+    probing the file itself, which can misread the dimensions and
+    frame the video wrong (square instead of widescreen). Returns a
+    kwargs dict for send_video; empty when probing fails, in which
+    case the video is sent exactly as before.
+    """
+    try:
+        completed = subprocess.run(
+            [
+                "ffprobe", "-v", "error", "-select_streams", "v:0",
+                "-show_entries", "stream=width,height:format=duration",
+                "-of", "json", str(path),
+            ],
+            capture_output=True, text=True, timeout=30,
+        )
+        if completed.returncode != 0:
+            return {}
+        data = json.loads(completed.stdout)
+        streams = data.get("streams") or []
+        if not streams:
+            return {}
+        meta: dict = {}
+        width = int(streams[0].get("width") or 0)
+        height = int(streams[0].get("height") or 0)
+        if width > 0 and height > 0:
+            meta["width"] = width
+            meta["height"] = height
+        duration = float((data.get("format") or {}).get("duration") or 0)
+        if duration > 0:
+            meta["duration"] = int(round(duration))
+        return meta
+    except Exception:
+        return {}
 
 GITHUB_URL = "https://github.com/E30TZ/subfa"
 
@@ -618,11 +659,13 @@ async def on_go(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             burned = result.outputs.get("burned")
             if burned and burned.exists():
                 if burned.stat().st_size <= TELEGRAM_UPLOAD_CAP:
+                    video_meta = await asyncio.to_thread(probe_video_meta, burned)
                     with burned.open("rb") as handle:
                         await context.bot.send_video(
                             chat_id=query.message.chat_id,
                             video=handle,
                             supports_streaming=True,
+                            **video_meta,
                         )
                 else:
                     await context.bot.send_message(
