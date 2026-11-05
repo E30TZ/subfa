@@ -315,3 +315,89 @@ def test_pipeline_quality_source_lifts_download_cap(tmp_path):
         target="fa", quality="source",
     )
     assert downloader.seen_max_height >= 4000
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not installed")
+def test_pipeline_prefers_asr_over_automatic_captions_when_media_present(tmp_path):
+    # YouTube shape: the site serves rolling automatic captions AND
+    # the media file. The automatic captions are the noisy source,
+    # so the pipeline transcribes the audio itself instead.
+    media = make_video(tmp_path / "clip.mp4")
+    captions = tmp_path / "clip.en.srt"
+    captions.write_text(ROLLING_SRT, encoding="utf-8")
+    engine = FakeEngine()
+    downloader = FakeDownloader(media, captions, captions_kind="automatic")
+    pipeline = make_pipeline(tmp_path, engine=engine, downloader=downloader)
+    result = pipeline.run_url(
+        "https://youtube.example/watch?v=20", tmp_path / "out", tmp_path / "dl",
+        target="fa",
+    )
+    assert engine.calls == 1
+    assert result.path_used == "whisper"
+    assert result.text_source == "ASR"
+    srt_text = result.outputs["srt"].read_text(encoding="utf-8")
+    assert "[fa] Hello world, this is a test." in srt_text
+    report_text = result.outputs["report"].read_text(encoding="utf-8")
+    assert "Text source: ASR" in report_text
+    # The track YouTube offered is still on record.
+    assert "Caption track: automatic en" in report_text
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not installed")
+def test_pipeline_keeps_manual_captions_over_asr(tmp_path):
+    # Published captions are human work: they stay ahead of ASR
+    # even when the media file is right there.
+    media = make_video(tmp_path / "clip.mp4")
+    captions = tmp_path / "clip.en.srt"
+    captions.write_text(CAPTIONS, encoding="utf-8")
+    engine = FakeEngine()
+    downloader = FakeDownloader(media, captions, captions_kind="manual")
+    pipeline = make_pipeline(tmp_path, engine=engine, downloader=downloader)
+    result = pipeline.run_url(
+        "https://example.com/watch?v=21", tmp_path / "out", tmp_path / "dl",
+        target="fa",
+    )
+    assert engine.calls == 0
+    assert result.path_used == "captions"
+    assert result.text_source == "published captions"
+    srt_text = result.outputs["srt"].read_text(encoding="utf-8")
+    assert "[fa] First published caption line" in srt_text
+    report_text = result.outputs["report"].read_text(encoding="utf-8")
+    assert "Text source: published captions" in report_text
+
+
+def test_pipeline_auto_captions_without_media_stay_captions(tmp_path):
+    captions = tmp_path / "clip.en.srt"
+    captions.write_text(ROLLING_SRT, encoding="utf-8")
+    engine = FakeEngine()
+    pipeline = make_pipeline(
+        tmp_path, engine=engine, downloader=KindDownloader(captions, "automatic")
+    )
+    result = pipeline.run_url(
+        "https://youtube.example/watch?v=22", tmp_path / "out", tmp_path / "dl",
+        target="fa",
+    )
+    assert engine.calls == 0
+    assert result.path_used == "captions"
+    assert result.text_source == "auto captions"
+    report_text = result.outputs["report"].read_text(encoding="utf-8")
+    assert "Text source: auto captions" in report_text
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not installed")
+def test_pipeline_falls_back_to_auto_captions_when_asr_empty(tmp_path):
+    media = make_video(tmp_path / "clip.mp4")
+    captions = tmp_path / "clip.en.srt"
+    captions.write_text(ROLLING_SRT, encoding="utf-8")
+    engine = FakeEngine(segments=[])
+    downloader = FakeDownloader(media, captions, captions_kind="automatic")
+    pipeline = make_pipeline(tmp_path, engine=engine, downloader=downloader)
+    result = pipeline.run_url(
+        "https://youtube.example/watch?v=23", tmp_path / "out", tmp_path / "dl",
+        target="fa",
+    )
+    assert engine.calls == 1
+    assert result.path_used == "captions"
+    assert result.text_source == "auto captions"
+    srt_text = result.outputs["srt"].read_text(encoding="utf-8")
+    assert "welcome to the show" in srt_text
