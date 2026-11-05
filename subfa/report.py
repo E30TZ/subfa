@@ -28,6 +28,12 @@ class QualityReport:
     tone_resolved: str = ""
     caption_track: str = ""
     media_route: str = ""
+    # Which text the subtitles were built from: "published
+    # captions", "auto captions" or "ASR".
+    text_source: str = ""
+    # Translation provider that produced the target text, when a
+    # translation ran at all (for example "argos", "llm (model)").
+    translator: str = ""
 
     @property
     def over_speed_percent(self) -> float:
@@ -51,6 +57,8 @@ class QualityReport:
             "tone_resolved": self.tone_resolved,
             "caption_track": self.caption_track,
             "media_route": self.media_route,
+            "text_source": self.text_source,
+            "translator": self.translator,
         }
 
     def to_text(self) -> str:
@@ -67,6 +75,10 @@ class QualityReport:
             f"Glossary terms applied: {self.glossary_applied}",
             f"Languages: {self.source_language} -> {self.target_language}",
         ]
+        if self.text_source:
+            lines.append(f"Text source: {self.text_source}")
+        if self.translator:
+            lines.append(f"Translator: {self.translator}")
         if self.caption_track:
             lines.append(f"Caption track: {self.caption_track}")
         if self.media_route == "android-360":
@@ -85,6 +97,15 @@ class QualityReport:
             f"مسیر متن: {self.path_used}",
             f"اصطلاحات واژه‌نامه اعمال‌شده: {self.glossary_applied}",
         ]
+        if self.text_source:
+            fa_source = {
+                "published captions": "زیرنویس منتشرشده",
+                "auto captions": "زیرنویس خودکار",
+                "ASR": "تشخیص گفتار خودکار",
+            }.get(self.text_source, self.text_source)
+            lines.append(f"منبع متن: {fa_source}")
+        if self.translator:
+            lines.append(f"مترجم: {self.translator}")
         if self.caption_track:
             lines.append(f"ترک زیرنویس: {self.caption_track}")
         if self.media_route == "android-360":
@@ -110,6 +131,8 @@ def build_report(
     tone_resolved: str = "",
     caption_track: str = "",
     media_route: str = "",
+    text_source: str = "",
+    translator: str = "",
 ) -> QualityReport:
     over = 0
     for cue in cues:
@@ -132,4 +155,6 @@ def build_report(
         tone_resolved=tone_resolved,
         caption_track=caption_track,
         media_route=media_route,
+        text_source=text_source,
+        translator=translator,
     )

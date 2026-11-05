@@ -10,7 +10,12 @@ Progress is reported through a callback with stage names so the
 CLI, the bot and the web app can each render it their own way.
 Stage names: download, extract, transcribe, captions, translate,
 write, burn, done. The result records which transcript path was
-used ("captions" or "whisper") so users can be told honestly.
+used ("captions" or "whisper") and which text source fed it
+(published captions, ASR, or automatic captions) so users can be
+told honestly. Published captions win over everything; when only
+automatic captions exist and the media file is in hand, a real ASR
+transcription of the audio is the source instead, because auto
+captions are the noisy option.
 """
 
 from __future__ import annotations
@@ -79,6 +84,7 @@ class JobResult:
     tone_resolved: str = ""
     caption_track: str = ""  # e.g. "automatic en", "" for whisper jobs
     media_route: str = ""  # "standard" / "android-360" for link jobs
+    text_source: str = ""  # "published captions" / "auto captions" / "ASR"
 
 
 class Pipeline:
@@ -202,41 +208,10 @@ class Pipeline:
             )
         return audio_path
 
-    def _source_cues(
-        self,
-        media_path: Path | None,
-        work_dir: Path,
-        source: str,
-        captions_path: Path | None,
-        captions_language: str | None,
-        captions_kind: str | None = None,
-    ) -> tuple[list[Cue], str, str, str, str]:
-        """Return (source cues, source language, path used, engine
-        info, caption track label). The track label names the exact
-        track used ("automatic en", "manual fa") and is empty for
-        transcription jobs."""
-        if captions_path is not None and self.settings.captions_fast_path:
-            cues = load_caption_cues(captions_path)
-            if cues:
-                self.progress("captions", 0.35, "captions")
-                language = captions_language or (
-                    source if source != "auto" else "en"
-                )
-                # Rolling automatic captions repeat the previous
-                # cue's tail in every cue. Rebuild them once, here,
-                # before cleanup, translation or anything else reads
-                # them. The pattern check also catches rolling
-                # tracks whose origin is unknown.
-                if captions_kind == "automatic" or looks_rolling(cues):
-                    cues = reconstruct_rolling_cues(cues)
-                track = f"{captions_kind or 'published'} {language}"
-                return cues, language, "captions", f"captions ({language})", track
-            self.progress("captions", 0.3, "fallback")
-        if media_path is None:
-            raise SubfaError(
-                "The video file could not be downloaded from this "
-                "link and it has no usable captions."
-            )
+    def _transcribe(
+        self, media_path: Path, work_dir: Path, source: str
+    ) -> tuple[list[Cue], str, str]:
+        """Run ASR on the media. Returns (cues, language, engine info)."""
         self.progress("extract", 0.35, "")
         audio_path = self._extract_audio(media_path, work_dir)
         self.progress("transcribe", 0.45, "whisper")
@@ -248,7 +223,95 @@ class Pipeline:
             engine_info = f"{result.engine} / {result.model}"
         else:
             engine_info = f"{self.engine.name} / {self.settings.model}"
-        return cues, result.language, "whisper", engine_info, ""
+        return cues, result.language, engine_info
+
+    def _source_cues(
+        self,
+        media_path: Path | None,
+        work_dir: Path,
+        source: str,
+        captions_path: Path | None,
+        captions_language: str | None,
+        captions_kind: str | None = None,
+    ) -> tuple[list[Cue], str, str, str, str, str]:
+        """Return (source cues, source language, path used, engine
+        info, caption track label, text source).
+
+        Preference order for the source text:
+
+        1. Published (manual) captions: a human wrote them, they
+           beat every machine source.
+        2. ASR over the media, when the only captions are automatic
+           ones and the media is in hand and not Persian. YouTube
+           auto captions are rolling, partial and noisy; a real
+           transcription of the audio is the more faithful source.
+           If ASR finds nothing, the auto captions are used after
+           all (derolled).
+        3. Automatic captions, derolled (the only option when the
+           site gated the media file itself).
+        4. ASR, when there are no captions at all.
+
+        The text source is one of "published captions", "auto
+        captions" or "ASR" and lands in the job report, so what the
+        subtitles were built from is never a guess. The track label
+        names the caption track the site offered ("automatic en",
+        "manual fa") and is empty when no track was involved.
+        """
+        caption_cues: list[Cue] | None = None
+        language = ""
+        if captions_path is not None and self.settings.captions_fast_path:
+            loaded = load_caption_cues(captions_path)
+            if loaded:
+                caption_cues = loaded
+                language = captions_language or (
+                    source if source != "auto" else "en"
+                )
+            else:
+                self.progress("captions", 0.3, "fallback")
+
+        if caption_cues is not None:
+            is_automatic = captions_kind == "automatic"
+            track = f"{captions_kind or 'published'} {language}"
+            prefer_asr = (
+                is_automatic and media_path is not None and language != "fa"
+            )
+            if not prefer_asr:
+                self.progress("captions", 0.35, "captions")
+                cues = caption_cues
+                # Rolling automatic captions repeat the previous
+                # cue's tail in every cue. Rebuild them once, here,
+                # before cleanup, translation or anything else reads
+                # them. The pattern check also catches rolling
+                # tracks whose origin is unknown.
+                if is_automatic or looks_rolling(cues):
+                    cues = reconstruct_rolling_cues(cues)
+                text_source = "auto captions" if is_automatic else "published captions"
+                return (
+                    cues, language, "captions",
+                    f"captions ({language})", track, text_source,
+                )
+            # Automatic captions, media in hand, non-Persian: a real
+            # transcription is the better source. Fall back to the
+            # derolled captions only if ASR comes back empty.
+            cues, asr_language, engine_info = self._transcribe(
+                media_path, work_dir, source
+            )
+            if cues:
+                return cues, asr_language, "whisper", engine_info, track, "ASR"
+            self.progress("captions", 0.35, "captions")
+            cues = reconstruct_rolling_cues(caption_cues)
+            return (
+                cues, language, "captions",
+                f"captions ({language})", track, "auto captions",
+            )
+
+        if media_path is None:
+            raise SubfaError(
+                "The video file could not be downloaded from this "
+                "link and it has no usable captions."
+            )
+        cues, language, engine_info = self._transcribe(media_path, work_dir, source)
+        return cues, language, "whisper", engine_info, "", "ASR"
 
     def _process(
         self,
@@ -283,6 +346,7 @@ class Pipeline:
             path_used,
             engine_info,
             caption_track,
+            text_source,
         ) = self._source_cues(
             media_path,
             work_dir,
@@ -426,6 +490,10 @@ class Pipeline:
             tone_resolved=tone_resolved,
             caption_track=caption_track,
             media_route=media_route,
+            text_source=text_source,
+            translator=(
+                self.translator.describe() if translated_texts is not None else ""
+            ),
         )
         report_path = out_dir / f"{stem}.report.txt"
         report_path.write_text(report.to_text(), encoding="utf-8")
@@ -446,4 +514,5 @@ class Pipeline:
             tone_resolved=tone_resolved,
             caption_track=caption_track,
             media_route=media_route,
+            text_source=text_source,
         )

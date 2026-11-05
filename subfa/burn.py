@@ -3,21 +3,39 @@
 Subtitles are converted to ASS first, because ASS gives real styling
 control: font, size, outline and position. The default style uses the
 Vazirmatn font for Persian text. libass applies the Unicode bidi
-algorithm, so Persian lines render right to left correctly as long
-as the font is installed; on systems without Vazirmatn, libass falls
-back to a system font and the subtitles still work, with a plainer
-look. This trade-off is stated in the README.
+algorithm, so Persian lines render right to left correctly.
+
+Two things keep the rendering identical and readable on every host:
+
+- The Vazirmatn TTFs are bundled in assets/fonts and handed to the
+  ass filter through its fontsdir option, so libass never depends on
+  a system installed font.
+- Font size and margins scale with the actual output frame height
+  (cinema targets about 5 percent of the frame height). A fixed
+  PlayRes tuned for tall videos would shrink the text to nothing on
+  a 360p output; sizing from the real height keeps subtitles legible
+  at every resolution.
 """
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
 from . import SubfaError
+from .config import REPO_ROOT
 from .srt import Cue
 
 DEFAULT_FONT = "Vazirmatn"
+
+# Where the bundled Vazirmatn TTFs live (OFL licensed, see the
+# OFL.txt beside them). Passed to the ass filter as fontsdir.
+BUNDLED_FONTS_DIR = REPO_ROOT / "assets" / "fonts"
+
+# The presets' absolute values are tuned at this reference height;
+# with a real frame height the fraction fields take over.
+REFERENCE_HEIGHT = 720
 
 # Style presets. cinema is the safe default for landscape video;
 # reels moves text up into the 9:16 safe area, bold and larger;
@@ -25,19 +43,58 @@ DEFAULT_FONT = "Vazirmatn"
 # bilingual cues. Font stays Vazirmatn for Persian presets.
 STYLE_PRESETS = {
     "cinema": {
-        "font_size": 22, "outline": 3, "shadow": 0, "bold": 0,
-        "margin_v": 30, "alignment": 2,
+        "font_size": 22, "font_frac": 0.050, "outline": 3, "shadow": 0,
+        "bold": 0, "margin_v": 30, "margin_frac": 0.042, "alignment": 2,
     },
     "reels": {
-        "font_size": 26, "outline": 3, "shadow": 1, "bold": 1,
-        "margin_v": 170, "alignment": 2,
+        "font_size": 26, "font_frac": 0.059, "outline": 3, "shadow": 1,
+        "bold": 1, "margin_v": 170, "margin_frac": 0.236, "alignment": 2,
     },
     "learning": {
-        "font_size": 20, "outline": 2, "shadow": 0, "bold": 0,
-        "margin_v": 36, "alignment": 2,
+        "font_size": 20, "font_frac": 0.045, "outline": 2, "shadow": 0,
+        "bold": 0, "margin_v": 36, "margin_frac": 0.050, "alignment": 2,
     },
 }
 DEFAULT_STYLE = "cinema"
+
+
+def _style_metrics(preset: dict, frame_height: int | None) -> tuple[int, int, int]:
+    """(font size, outline, bottom margin) for a preset.
+
+    Without a frame height the reference values are used as-is. With
+    one, the size comes from the preset's fraction of the height
+    (cinema: about 5 percent), so a 360p video gets proportionally
+    the same on-screen text as a 1080p one.
+    """
+    if frame_height is None:
+        return preset["font_size"], preset["outline"], preset["margin_v"]
+    height = max(int(frame_height), 1)
+    font_size = max(10, round(preset["font_frac"] * height))
+    outline = max(1, round(preset["outline"] * height / REFERENCE_HEIGHT))
+    margin_v = max(0, round(preset["margin_frac"] * height))
+    return font_size, outline, margin_v
+
+
+def probe_video_size(input_video: str | Path) -> tuple[int, int] | None:
+    """(width, height) of the first video stream, or None."""
+    try:
+        completed = subprocess.run(
+            [
+                "ffprobe", "-v", "error", "-select_streams", "v:0",
+                "-show_entries", "stream=width,height",
+                "-of", "json", str(input_video),
+            ],
+            capture_output=True, text=True, timeout=30,
+        )
+        if completed.returncode != 0:
+            return None
+        streams = json.loads(completed.stdout).get("streams") or []
+        if not streams:
+            return None
+        width, height = int(streams[0]["width"]), int(streams[0]["height"])
+        return (width, height) if width > 0 and height > 0 else None
+    except Exception:
+        return None
 
 
 def format_ass_timestamp(seconds: float) -> str:
@@ -57,24 +114,32 @@ def cues_to_ass(
     cues: list[Cue],
     font: str = DEFAULT_FONT,
     style: str = DEFAULT_STYLE,
+    frame_width: int | None = None,
+    frame_height: int | None = None,
 ) -> str:
     preset = STYLE_PRESETS.get(style, STYLE_PRESETS[DEFAULT_STYLE])
+    font_size, outline, margin_v = _style_metrics(preset, frame_height)
+    if frame_height is not None:
+        play_res_y = int(frame_height)
+        play_res_x = int(frame_width) if frame_width else round(play_res_y * 16 / 9)
+    else:
+        play_res_x, play_res_y = 1280, REFERENCE_HEIGHT
     header = (
         "[Script Info]\n"
         "Title: SubFa subtitles\n"
         "ScriptType: v4.00+\n"
-        "PlayResX: 1280\n"
-        "PlayResY: 720\n"
+        f"PlayResX: {play_res_x}\n"
+        f"PlayResY: {play_res_y}\n"
         "\n"
         "[V4+ Styles]\n"
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, "
         "OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, "
         "ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
         "Alignment, MarginL, MarginR, MarginV, Encoding\n"
-        f"Style: Default,{font},{preset['font_size']},&H00FFFFFF,&H000000FF,"
+        f"Style: Default,{font},{font_size},&H00FFFFFF,&H000000FF,"
         f"&H00000000,&H64000000,{preset['bold']},0,0,0,100,100,0,0,1,"
-        f"{preset['outline']},{preset['shadow']},{preset['alignment']},"
-        f"10,10,{preset['margin_v']},1\n"
+        f"{outline},{preset['shadow']},{preset['alignment']},"
+        f"10,10,{margin_v},1\n"
         "\n"
         "[Events]\n"
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, "
@@ -85,9 +150,10 @@ def cues_to_ass(
         if style == "learning" and "\n" in cue.text:
             # Source line smaller, above the translation.
             first, rest = cue.text.split("\n", 1)
+            source_size = max(8, round(font_size * 0.65))
             text = (
-                "{\\fs13\\c&H00D8D8D8&}" + first
-                + "{\\fs20\\c&H00FFFFFF&}\\N"
+                f"{{\\fs{source_size}\\c&H00D8D8D8&}}" + first
+                + f"{{\\fs{font_size}\\c&H00FFFFFF&}}\\N"
                 + rest.replace("\n", "\\N")
             )
         else:
@@ -100,29 +166,10 @@ def cues_to_ass(
     return header + "\n".join(events) + "\n"
 
 
-def build_burn_command(
-    input_video: str | Path,
-    ass_path: str | Path,
-    output_path: str | Path,
-    max_height: int | None = None,
-) -> list[str]:
-    """Build the ffmpeg command for burn-in (no shell involved).
-
-    The .ass file is referenced by bare filename, never by full
-    path: ffmpeg's filter parser treats quoted paths differently
-    across versions (the quoted form ass='/path/x.ass' parses on
-    ffmpeg 6/7 but is rejected by ffmpeg 8, e.g. Homebrew's, with
-    "No option name near"). burn_subtitles runs the command with
-    cwd set to the .ass directory, and only the filter-special
-    characters in the filename itself are escaped here.
-
-    With max_height set, a scale filter runs first and caps the
-    output height; min() means a shorter source is never upscaled.
-    The subtitles are drawn after scaling, at the output size.
-    """
-    name = Path(ass_path).name
-    escaped = (
-        name.replace("\\", "\\\\")
+def _escape_filter_value(value: str) -> str:
+    """Escape a value for use inside an ffmpeg filter option."""
+    return (
+        value.replace("\\", "\\\\")
         .replace(":", "\\:")
         .replace("'", "\\'")
         .replace(",", "\\,")
@@ -130,10 +177,40 @@ def build_burn_command(
         .replace("[", "\\[")
         .replace("]", "\\]")
     )
+
+
+def build_burn_command(
+    input_video: str | Path,
+    ass_path: str | Path,
+    output_path: str | Path,
+    max_height: int | None = None,
+    fontsdir: str | Path | None = None,
+) -> list[str]:
+    """Build the ffmpeg command for burn-in (no shell involved).
+
+    The .ass file is referenced through the filter's NAMED filename
+    option with a bare filename, never a full path and never the
+    positional form: ffmpeg 8 (e.g. Homebrew's) rejects both the
+    quoted-path form ass='/path/x.ass' and the positional form
+    ass=x.ass with "No option name near", while ffmpeg 6/7 accepted
+    them. burn_subtitles runs the command with cwd set to the .ass
+    directory, and only the filter-special characters in the
+    filename itself are escaped here. fontsdir, when given, points
+    libass at the bundled Vazirmatn fonts so rendering does not
+    depend on fonts installed on the host.
+
+    With max_height set, a scale filter runs first and caps the
+    output height; min() means a shorter source is never upscaled.
+    The subtitles are drawn after scaling, at the output size.
+    """
+    escaped = _escape_filter_value(Path(ass_path).name)
+    ass_filter = f"ass=filename={escaped}"
+    if fontsdir:
+        ass_filter += f":fontsdir={_escape_filter_value(str(fontsdir))}"
     filters = []
     if max_height:
         filters.append(f"scale=-2:min(ih\\,{int(max_height)})")
-    filters.append(f"ass={escaped}")
+    filters.append(ass_filter)
     return [
         "ffmpeg",
         "-y",
@@ -152,15 +229,42 @@ def burn_subtitles(
     work_dir: str | Path | None = None,
     style: str = DEFAULT_STYLE,
     max_height: int | None = None,
+    fonts_dir: str | Path | None = None,
 ) -> Path:
-    """Write the ASS file and run ffmpeg. Returns the output path."""
+    """Write the ASS file and run ffmpeg. Returns the output path.
+
+    The input is probed so the ASS PlayRes and font size match the
+    actual output frame: when max_height caps the output, the size
+    math follows the same min() rule as the scale filter. fonts_dir
+    defaults to the bundled Vazirmatn folder when it exists.
+    """
     output_path = Path(output_path)
     ass_dir = Path(work_dir) if work_dir else output_path.parent
     ass_dir.mkdir(parents=True, exist_ok=True)
     ass_path = ass_dir / (output_path.stem + ".ass")
-    ass_path.write_text(cues_to_ass(cues, font=font, style=style), encoding="utf-8")
+
+    size = probe_video_size(input_video)
+    if size is not None:
+        width, height = size
+        if max_height and height > max_height:
+            out_height = int(max_height)
+            out_width = int(round(width * out_height / height / 2.0)) * 2
+        else:
+            out_width, out_height = width, height
+    else:
+        out_width, out_height = 1280, REFERENCE_HEIGHT
+    ass_path.write_text(
+        cues_to_ass(
+            cues, font=font, style=style,
+            frame_width=out_width, frame_height=out_height,
+        ),
+        encoding="utf-8",
+    )
+    if fonts_dir is None and BUNDLED_FONTS_DIR.is_dir():
+        fonts_dir = BUNDLED_FONTS_DIR
     command = build_burn_command(
-        input_video, ass_path, output_path, max_height=max_height
+        input_video, ass_path, output_path,
+        max_height=max_height, fontsdir=fonts_dir,
     )
     completed = subprocess.run(
         command, capture_output=True, text=True, cwd=str(ass_dir)

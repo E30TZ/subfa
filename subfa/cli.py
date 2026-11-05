@@ -60,8 +60,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="faster-whisper model for non-Persian audio (default: large-v3-turbo). Persian audio uses the Persian fine-tuned model instead.")
     parser.add_argument("--asr-engine", choices=["auto", "persian", "whisper"], default=None,
                         help="Speech recognition routing: auto (default, Persian audio to the Persian fine-tuned model, everything else to faster-whisper), persian or whisper.")
-    parser.add_argument("--translator", choices=["argos", "none"], default=None,
-                        help="Translation engine: argos (offline, default) or none.")
+    parser.add_argument("--translator", choices=["argos", "llm", "none"], default=None,
+                        help="Translation engine: argos (offline, default), llm (OpenAI-compatible endpoint, needs SUBFA_LLM_BASE_URL and SUBFA_LLM_MODEL), or none.")
     parser.add_argument("--glossary", default="",
                         help="Comma separated glossary names, for example: programming,general")
     parser.add_argument("--burn", action="store_true",
@@ -163,6 +163,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     print(f"Transcript source: {result.path_used}")
+    if result.text_source:
+        print(f"Text source: {result.text_source}")
     if result.caption_track:
         print(f"Caption track: {result.caption_track}")
     print(f"Quality: {result.quality} · Tone: {result.tone_requested} -> {result.tone_resolved}")

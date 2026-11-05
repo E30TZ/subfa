@@ -3,6 +3,15 @@
 Environment variables use the SUBFA_ prefix, for example:
     SUBFA_WHISPER_MODEL=tiny  SUBFA_MAX_FILE_MB=100  SUBFA_TRANSLATOR=none
 
+Translation settings:
+    SUBFA_TRANSLATOR   argos (default, offline), llm or none.
+    SUBFA_LLM_BASE_URL OpenAI-compatible base URL for the llm
+                       translator, including the version prefix,
+                       for example http://127.0.0.1:8317/v1
+    SUBFA_LLM_API_KEY  Bearer key for that endpoint, when it needs
+                       one. Never written to logs or reports.
+    SUBFA_LLM_MODEL    Model id the endpoint should run.
+
 Speech recognition (ASR) settings:
     SUBFA_ASR_ENGINE   auto (default), persian or whisper.
                        auto routes Persian audio to the Persian
@@ -69,6 +78,10 @@ class Settings:
     """Runtime settings shared by the CLI, the bot and the web app."""
 
     translator: str = field(default_factory=lambda: _env("TRANSLATOR", "argos"))
+    # -- LLM translation (SUBFA_TRANSLATOR=llm) -----------------------
+    llm_base_url: str = field(default_factory=lambda: _env("LLM_BASE_URL", ""))
+    llm_api_key: str = field(default_factory=lambda: _env("LLM_API_KEY", ""))
+    llm_model: str = field(default_factory=lambda: _env("LLM_MODEL", ""))
     # -- ASR (speech recognition) ------------------------------------
     # Routing mode: auto, persian or whisper.
     asr_engine: str = field(
