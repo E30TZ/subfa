@@ -85,14 +85,16 @@ TEXTS = {
             "بفرستی، نسخه با زیرنویس چسبیده هم تحویل می‌گیری."
         ),
         "ask_subtitle_lang": "زبان زیرنویس را انتخاب کن:",
-        "ask_style": "سبک زیرنویس روی ویدیو را انتخاب کن:",
+        "ask_style": "سبک، کیفیت و لحن را انتخاب کن و «شروع» را بزن (کیفیت و لحن پیش‌فرض دارند):",
+        "btn_go": "شروع ساخت",
         "expired": "این درخواست منقضی شده است. فایل یا لینک را دوباره بفرست.",
         "hint": "یک فایل ویدیو یا صدا بفرست، یا لینک ویدیو را پیست کن.",
         "started": "شروع شد",
         "done": "تمام شد ✅",
         "burned_too_big": (
-            "ویدیوی زیرنویس‌دار از سقف ارسال تلگرام بزرگ‌تر شد و ارسال "
-            "نشد. فایل‌های زیرنویس بالا ارسال شده‌اند."
+            "ویدیوی زیرنویس‌دار از سقف ۵۰ مگابایتی تلگرام بزرگ‌تر شد و "
+            "اینجا ارسال نشد. فایل‌های زیرنویس بالا کامل‌اند؛ نسخه "
+            "ویدیویی را از وب‌اپ SubFa می‌گیری."
         ),
         "path_captions": "منبع متن: زیرنویس منتشرشده",
         "path_whisper": "منبع متن: پیاده‌سازی صدا",
@@ -130,14 +132,17 @@ TEXTS = {
             "version."
         ),
         "ask_subtitle_lang": "Choose the subtitle language:",
-        "ask_style": "Choose the burn-in style:",
+        "ask_style": "Pick the style, quality and tone, then press Start (quality and tone have defaults):",
+        "btn_go": "Start",
         "expired": "This request expired. Send the file or link again.",
         "hint": "Send a video or audio file, or paste a video link.",
         "started": "Started",
         "done": "Done ✅",
         "burned_too_big": (
-            "The subtitled video exceeds Telegram's upload cap, so it "
-            "was not sent. The subtitle files above are complete."
+            "The subtitled video is over Telegram's 50 MB bot limit, "
+            "so it could not be sent here. The subtitle files above "
+            "are complete, and the video version is available from "
+            "the SubFa web app."
         ),
         "path_captions": "Transcript source: published captions",
         "path_whisper": "Transcript source: Whisper transcription",
@@ -279,23 +284,81 @@ LANG_BUTTONS = [
     [InlineKeyboardButton("دوزبانه / Bilingual", callback_data="lang:bilingual")],
 ]
 
-STYLE_BUTTONS = [
-    [
-        InlineKeyboardButton(
-            "سینمایی / Cinema",
-            callback_data="style:cinema",
-            icon_custom_emoji_id=icon_id("brand"),
-        )
-    ],
-    [InlineKeyboardButton("📱 ریلز عمودی / Reels 9:16", callback_data="style:reels")],
-    [
-        InlineKeyboardButton(
-            "آموزشی دوزبانه / Learning",
-            callback_data="style:learning",
-            icon_custom_emoji_id=icon_id("book"),
-        )
-    ],
+# Job settings: one message, three choice groups and a Start
+# button. Quality and tone carry defaults (720, auto), so a user who
+# ignores them entirely still gets a complete job. The current
+# choice in each group is marked with a check; tapping another value
+# just re-renders this same message.
+STYLE_DEFS = [
+    ("سینمایی / Cinema", "cinema", "brand"),
+    ("📱 ریلز عمودی / Reels 9:16", "reels", None),
+    ("آموزشی دوزبانه / Learning", "learning", "book"),
 ]
+QUALITY_DEFS = [
+    ("اصلی / Source", "source"),
+    ("720p", "720"),
+    ("480p", "480"),
+    ("360p", "360"),
+]
+TONE_DEFS = [
+    ("خودکار / Auto", "auto"),
+    ("رسمی / Formal", "formal"),
+    ("محاوره‌ای / Informal", "informal"),
+    ("ساده / Simple", "simple"),
+]
+
+DEFAULT_STYLE = "cinema"
+DEFAULT_QUALITY = "720"
+DEFAULT_TONE = "auto"
+
+
+def _marked(label: str, selected: bool) -> str:
+    return f"✓ {label}" if selected else label
+
+
+def settings_keyboard(
+    lang: str,
+    style: str = DEFAULT_STYLE,
+    quality: str = DEFAULT_QUALITY,
+    tone: str = DEFAULT_TONE,
+) -> InlineKeyboardMarkup:
+    rows = []
+    for label, value, icon in STYLE_DEFS:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    _marked(label, value == style),
+                    callback_data=f"style:{value}",
+                    icon_custom_emoji_id=icon_id(icon) if icon else None,
+                )
+            ]
+        )
+    rows.append(
+        [
+            InlineKeyboardButton(
+                _marked(label, value == quality),
+                callback_data=f"quality:{value}",
+            )
+            for label, value in QUALITY_DEFS
+        ]
+    )
+    rows.append(
+        [
+            InlineKeyboardButton(
+                _marked(label, value == tone),
+                callback_data=f"tone:{value}",
+            )
+            for label, value in TONE_DEFS
+        ]
+    )
+    rows.append(
+        [
+            InlineKeyboardButton(
+                t(lang, "btn_go"), callback_data="go", style="primary"
+            )
+        ]
+    )
+    return InlineKeyboardMarkup(rows)
 
 
 def ui_lang(update: Update) -> str:
@@ -428,16 +491,53 @@ async def on_language(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await query.edit_message_text(t(lang, "expired"))
         return
     context.user_data["lang_choice"] = choice
+    context.user_data.setdefault("style", DEFAULT_STYLE)
+    context.user_data.setdefault("quality", DEFAULT_QUALITY)
+    context.user_data.setdefault("tone", DEFAULT_TONE)
     await query.edit_message_text(
-        t(lang, "ask_style"), reply_markup=InlineKeyboardMarkup(STYLE_BUTTONS)
+        t(lang, "ask_style"),
+        reply_markup=settings_keyboard(
+            lang,
+            context.user_data["style"],
+            context.user_data["quality"],
+            context.user_data["tone"],
+        ),
     )
 
 
-async def on_style(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def _on_pick(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """A style, quality or tone tap: store the choice and re-render
+    the same settings message with the new current marks."""
     query = update.callback_query
     await query.answer()
     lang = ui_lang(update)
-    style = (query.data or "style:cinema").split(":", 1)[1]
+    key, _, value = (query.data or "").partition(":")
+    if key not in ("style", "quality", "tone") or not value:
+        return
+    if "pending" not in context.user_data:
+        await query.edit_message_text(t(lang, "expired"))
+        return
+    context.user_data[key] = value
+    try:
+        await query.edit_message_reply_markup(
+            reply_markup=settings_keyboard(
+                lang,
+                context.user_data.get("style", DEFAULT_STYLE),
+                context.user_data.get("quality", DEFAULT_QUALITY),
+                context.user_data.get("tone", DEFAULT_TONE),
+            )
+        )
+    except Exception:
+        pass  # tapping the already selected value changes nothing
+
+
+async def on_go(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    lang = ui_lang(update)
+    style = context.user_data.pop("style", DEFAULT_STYLE)
+    quality = context.user_data.pop("quality", DEFAULT_QUALITY)
+    tone = context.user_data.pop("tone", DEFAULT_TONE)
     pending = context.user_data.pop("pending", None)
     choice = context.user_data.pop("lang_choice", "fa")
     if pending is None:
@@ -495,6 +595,8 @@ async def on_style(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     True,
                     bilingual_burn,
                     style,
+                    quality,
+                    tone,
                 )
             else:
                 result = await asyncio.to_thread(
@@ -508,7 +610,25 @@ async def on_style(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     True,
                     bilingual_burn,
                     style,
+                    quality,
+                    tone,
                 )
+            # Video first: the subtitled video is the primary
+            # result, the subtitle files follow it.
+            burned = result.outputs.get("burned")
+            if burned and burned.exists():
+                if burned.stat().st_size <= TELEGRAM_UPLOAD_CAP:
+                    with burned.open("rb") as handle:
+                        await context.bot.send_video(
+                            chat_id=query.message.chat_id,
+                            video=handle,
+                            supports_streaming=True,
+                        )
+                else:
+                    await context.bot.send_message(
+                        chat_id=query.message.chat_id,
+                        text=t(lang, "burned_too_big"),
+                    )
             for kind_name in ("srt", "bilingual", "transcript", "report"):
                 path = result.outputs.get(kind_name)
                 if path and path.exists():
@@ -516,18 +636,6 @@ async def on_style(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                         await context.bot.send_document(
                             chat_id=query.message.chat_id, document=handle
                         )
-            burned = result.outputs.get("burned")
-            if burned and burned.exists():
-                if burned.stat().st_size <= TELEGRAM_UPLOAD_CAP:
-                    with burned.open("rb") as handle:
-                        await context.bot.send_video(
-                            chat_id=query.message.chat_id, video=handle
-                        )
-                else:
-                    await context.bot.send_message(
-                        chat_id=query.message.chat_id,
-                        text=t(lang, "burned_too_big"),
-                    )
             if result.media_missing:
                 await context.bot.send_message(
                     chat_id=query.message.chat_id,
@@ -587,7 +695,10 @@ def main() -> None:
     )
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
     app.add_handler(CallbackQueryHandler(on_language, pattern=r"^lang:"))
-    app.add_handler(CallbackQueryHandler(on_style, pattern=r"^style:"))
+    app.add_handler(
+        CallbackQueryHandler(_on_pick, pattern=r"^(style|quality|tone):")
+    )
+    app.add_handler(CallbackQueryHandler(on_go, pattern=r"^go$"))
     app.add_handler(CallbackQueryHandler(on_ui_set, pattern=r"^ui:"))
     app.add_handler(CallbackQueryHandler(on_ui_picker, pattern=r"^uil$"))
     app.add_handler(CallbackQueryHandler(on_help, pattern=r"^help$"))
