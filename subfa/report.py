@@ -1,0 +1,94 @@
+"""A small quality report for every finished job.
+
+Every number here is computed from the actual cues of the job: cue
+count, how many cues break the reading speed limit, which transcript
+path was taken, which model ran, and how many glossary terms were
+applied. Nothing is estimated or invented.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from .srt import MAX_CHARS_PER_SECOND, Cue
+
+
+@dataclass
+class QualityReport:
+    duration_seconds: float
+    cue_count: int
+    over_speed_count: int
+    path_used: str
+    model: str
+    glossary_applied: int
+    source_language: str
+    target_language: str
+
+    @property
+    def over_speed_percent(self) -> float:
+        if self.cue_count == 0:
+            return 0.0
+        return 100.0 * self.over_speed_count / self.cue_count
+
+    def to_dict(self) -> dict:
+        return {
+            "duration_seconds": round(self.duration_seconds, 1),
+            "cue_count": self.cue_count,
+            "over_speed_count": self.over_speed_count,
+            "over_speed_percent": round(self.over_speed_percent, 1),
+            "path_used": self.path_used,
+            "model": self.model,
+            "glossary_applied": self.glossary_applied,
+            "source_language": self.source_language,
+            "target_language": self.target_language,
+        }
+
+    def to_text(self) -> str:
+        minutes = int(self.duration_seconds // 60)
+        seconds = int(self.duration_seconds % 60)
+        lines = [
+            "SubFa quality report",
+            f"Timeline: {minutes}:{seconds:02d} ({self.duration_seconds:.1f}s, last cue end)",
+            f"Cues: {self.cue_count}",
+            f"Cues over the {MAX_CHARS_PER_SECOND:.0f} chars/sec reading limit: "
+            f"{self.over_speed_count} ({self.over_speed_percent:.1f}%)",
+            f"Transcript path: {self.path_used}",
+            f"Model / engine info: {self.model}",
+            f"Glossary terms applied: {self.glossary_applied}",
+            f"Languages: {self.source_language} -> {self.target_language}",
+            "",
+            "گزارش کیفیت SubFa",
+            f"تعداد زیرنویس‌ها: {self.cue_count}",
+            f"زیرنویس‌های سریع‌تر از حد خواندن: {self.over_speed_count} "
+            f"({self.over_speed_percent:.1f}٪)",
+            f"مسیر متن: {self.path_used}",
+            f"اصطلاحات واژه‌نامه اعمال‌شده: {self.glossary_applied}",
+        ]
+        return "\n".join(lines) + "\n"
+
+
+def build_report(
+    cues: list[Cue],
+    path_used: str,
+    model: str,
+    glossary_applied: int,
+    source_language: str,
+    target_language: str,
+) -> QualityReport:
+    over = 0
+    for cue in cues:
+        duration = max(cue.end - cue.start, 0.01)
+        chars = len("".join(cue.text.split()))
+        if chars / duration > MAX_CHARS_PER_SECOND:
+            over += 1
+    duration_seconds = cues[-1].end if cues else 0.0
+    return QualityReport(
+        duration_seconds=duration_seconds,
+        cue_count=len(cues),
+        over_speed_count=over,
+        path_used=path_used,
+        model=model,
+        glossary_applied=glossary_applied,
+        source_language=source_language,
+        target_language=target_language,
+    )
