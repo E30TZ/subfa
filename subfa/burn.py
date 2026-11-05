@@ -233,6 +233,13 @@ def build_burn_command(
     the output bitrate on low-resolution sources (146 kb/s out for a
     177 kb/s source in one measured case), softening both the scene
     and the burned text. Audio stays stream-copied.
+
+    The muxer gets +faststart so the MP4 moov atom (the metadata
+    box carrying dimensions and duration) sits at the front of the
+    file instead of the end. Chat players such as Telegram's probe
+    that metadata before framing the video; with the moov at the
+    end they can misread the file and frame it with the wrong
+    aspect ratio, and streaming cannot start progressively.
     """
     escaped = _escape_filter_value(Path(ass_path).name)
     ass_filter = f"ass=filename={escaped}"
@@ -252,6 +259,7 @@ def build_burn_command(
         "-preset", "medium",
         "-pix_fmt", "yuv420p",
         "-c:a", "copy",
+        "-movflags", "+faststart",
         str(output_path),
     ]
 
