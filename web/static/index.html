@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/static/favicon.ico" sizes="any">
 <title>SubFa: Persian subtitles from any video</title>
 <style>
   :root {
@@ -203,6 +204,7 @@
         <section id="results" class="panel" aria-live="polite">
           <h2 data-i18n="resultsTitle">فایل‌های آمادهٔ دانلود</h2>
           <p class="reportline" id="reportLine"></p>
+          <p class="reportline" id="metaLine"></p>
           <div id="rows"></div>
           <a class="editlink" id="editLink" href="#" data-i18n="editLink">ویرایش زیرنویس‌ها</a>
         </section>
@@ -246,6 +248,20 @@
             </button>
           </div>
           <input type="hidden" id="style" value="cinema">
+          <label class="f" for="quality" data-i18n="qualityLabel">کیفیت ویدیو</label>
+          <select id="quality">
+            <option value="source" data-i18n="qSource">اصلی (بهترین)</option>
+            <option value="720" selected>720p</option>
+            <option value="480">480p</option>
+            <option value="360">360p</option>
+          </select>
+          <label class="f" for="tone" data-i18n="toneLabel">لحن زیرنویس فارسی</label>
+          <select id="tone">
+            <option value="auto" selected data-i18n="toneAuto">خودکار</option>
+            <option value="formal" data-i18n="toneFormal">رسمی</option>
+            <option value="informal" data-i18n="toneInformal">محاوره‌ای</option>
+            <option value="simple" data-i18n="toneSimple">ساده</option>
+          </select>
           <div style="margin-top:10px">
             <label class="check"><input type="checkbox" id="burn" checked> <span data-i18n="burnOpt">ویدیوی زیرنویس‌دار هم بساز</span></label>
             <label class="check"><input type="checkbox" id="bilingual"> <span data-i18n="bilingualOpt">زیرنویس دوزبانه روی ویدیو</span></label>
@@ -260,8 +276,8 @@
 </main>
 <script>
 const T = {
-  fa: { docTitle:"SubFa: زیرنویس فارسی از هر ویدیو", title:"زیرنویس فارسی از هر ویدیو", lead:"فایل ویدیو یا صدا را بفرست، یا لینک ویدیو را بچسبان. زیرنویس فارسی، زیرنویس دوزبانه و متن کامل را تحویل بگیر. فایل‌ها همین جا پردازش و پاک می‌شوند.", dropTitle:"فایل را اینجا رها کن", dropSub:"یا برای انتخاب فایل کلیک کن (ویدیو یا صدا)", urlLabel:"لینک ویدیو", orDrop:"یا فایل را روی صحنه رها کن", targetLabel:"زبان زیرنویس", faOpt:"فارسی", enOpt:"انگلیسی", glossaryLabel:"واژه‌نامه تخصصی (اختیاری)", noneOpt:"هیچ‌کدام", generalOpt:"عمومی", programmingOpt:"برنامه‌نویسی", gamingOpt:"بازی", styleLabel:"سبک زیرنویس روی ویدیو", cinemaOpt:"سینمایی", reelsOpt:"ریلز عمودی (9:16)", learningOpt:"آموزشی دوزبانه", thumbLine:"متن زیرنویس", thumbSub:"نمونهٔ سبک", burnOpt:"ویدیوی زیرنویس‌دار هم بساز", bilingualOpt:"زیرنویس دوزبانه روی ویدیو", go:"ساخت زیرنویس", goAgain:"ساخت زیرنویس تازه", privacyNote:"فایل‌ها همین‌جا پردازش و بعد پاک می‌شوند.", newJob:"کار تازه", foot:"سقف حجم و مدت در سرور تنظیم می‌شود و هنگام خطا دقیق گفته می‌شود. فقط محتوایی را دانلود یا زیرنویس کن که حق استفاده از آن را داری.", resultsTitle:"فایل‌های آمادهٔ دانلود", editLink:"ویرایش زیرنویس‌ها", step1:"دریافت فایل", step2:"پیاده‌سازی صدا", step3:"ترجمه", step4:"ساخت ویدیو", working:"در حال ساخت زیرنویس:", done:"تمام شد.", captionsNote:"منبع متن: زیرنویس منتشرشدهٔ خود ویدیو", whisperNote:"منبع متن: پیاده‌سازی با Whisper", errPrefix:"خطا: ", reportLine:"گزارش کیفیت: {c} زیرنویس، {p}٪ سریع‌تر از حد خواندن، واژه‌نامه: {g}", styleChip:"سبک: {s}", play:"پخش ویدیو", pause:"توقف ویدیو", changeFile:"تغییر فایل", dl:"دانلود", sampleFa1:"امروز دربارهٔ ساختار جمله", sampleFa2:"در زبان انگلیسی صحبت می‌کنیم", sampleEn:"Today we talk about sentence structure in English", stageNames:{start:"دریافت فایل", download:"دریافت فایل", extract:"پیاده‌سازی صدا", captions:"پیاده‌سازی صدا", transcribe:"پیاده‌سازی صدا", translate:"ترجمه", write:"ساخت ویدیو", burn:"ساخت ویدیو", done:"ساخت ویدیو"}, kinds:{srt:"زیرنویس", bilingual:"زیرنویس دوزبانه", transcript:"متن کامل", burned:"ویدیوی زیرنویس‌دار", report:"گزارش کیفیت"}, srtFa:"زیرنویس فارسی", srtEn:"زیرنویس انگلیسی" },
-  en: { docTitle:"SubFa: Persian subtitles from any video", title:"Persian subtitles from any video", lead:"Send a video or audio file, or paste a video link. Get Persian subtitles, a bilingual subtitle file and a full transcript back. Files are processed here and deleted.", dropTitle:"Drop a file here", dropSub:"or click to choose a file (video or audio)", urlLabel:"Video link", orDrop:"or drop the file on the stage", targetLabel:"Subtitle language", faOpt:"Persian", enOpt:"English", glossaryLabel:"Glossary (optional)", noneOpt:"None", generalOpt:"General", programmingOpt:"Programming", gamingOpt:"Gaming", styleLabel:"Burn-in style", cinemaOpt:"Cinema", reelsOpt:"Reels (vertical 9:16)", learningOpt:"Learning (bilingual)", thumbLine:"Subtitle text", thumbSub:"Style sample", burnOpt:"Also make the subtitled video", bilingualOpt:"Bilingual subtitles on the video", go:"Make subtitles", goAgain:"Make new subtitles", privacyNote:"Files are processed here and deleted afterwards.", newJob:"New job", foot:"Size and duration caps are set on the server and reported exactly when hit. Only download or subtitle content you have the right to use.", resultsTitle:"Files ready to download", editLink:"Edit subtitles", step1:"Get file", step2:"Transcribe", step3:"Translate", step4:"Build video", working:"Making subtitles:", done:"Done.", captionsNote:"Transcript source: the video's own published captions", whisperNote:"Transcript source: Whisper transcription", errPrefix:"Error: ", reportLine:"Quality: {c} cues, {p}% over the reading limit, glossary applied: {g}", styleChip:"Style: {s}", play:"Play video", pause:"Pause video", changeFile:"Change file", dl:"Download", sampleFa1:"امروز دربارهٔ ساختار جمله", sampleFa2:"در زبان انگلیسی صحبت می‌کنیم", sampleEn:"Today we talk about sentence structure in English", stageNames:{start:"Get file", download:"Get file", extract:"Transcribe", captions:"Transcribe", transcribe:"Transcribe", translate:"Translate", write:"Build video", burn:"Build video", done:"Build video"}, kinds:{srt:"Subtitles", bilingual:"Bilingual subtitles", transcript:"Transcript", burned:"Subtitled video", report:"Quality report"}, srtFa:"Persian subtitles", srtEn:"English subtitles" }
+  fa: { docTitle:"SubFa: زیرنویس فارسی از هر ویدیو", title:"زیرنویس فارسی از هر ویدیو", lead:"فایل ویدیو یا صدا را بفرست، یا لینک ویدیو را بچسبان. زیرنویس فارسی، زیرنویس دوزبانه و متن کامل را تحویل بگیر. فایل‌ها همین جا پردازش و پاک می‌شوند.", dropTitle:"فایل را اینجا رها کن", dropSub:"یا برای انتخاب فایل کلیک کن (ویدیو یا صدا)", urlLabel:"لینک ویدیو", orDrop:"یا فایل را روی صحنه رها کن", targetLabel:"زبان زیرنویس", faOpt:"فارسی", enOpt:"انگلیسی", glossaryLabel:"واژه‌نامه تخصصی (اختیاری)", noneOpt:"هیچ‌کدام", generalOpt:"عمومی", programmingOpt:"برنامه‌نویسی", gamingOpt:"بازی", styleLabel:"سبک زیرنویس روی ویدیو", cinemaOpt:"سینمایی", reelsOpt:"ریلز عمودی (9:16)", learningOpt:"آموزشی دوزبانه", qualityLabel:"کیفیت ویدیو", qSource:"اصلی (بهترین)", toneLabel:"لحن زیرنویس فارسی", toneAuto:"خودکار", toneFormal:"رسمی", toneInformal:"محاوره‌ای", toneSimple:"ساده", metaLine:"کیفیت: {q} · لحن: {t}", thumbLine:"متن زیرنویس", thumbSub:"نمونهٔ سبک", burnOpt:"ویدیوی زیرنویس‌دار هم بساز", bilingualOpt:"زیرنویس دوزبانه روی ویدیو", go:"ساخت زیرنویس", goAgain:"ساخت زیرنویس تازه", privacyNote:"فایل‌ها همین‌جا پردازش و بعد پاک می‌شوند.", newJob:"کار تازه", foot:"سقف حجم و مدت در سرور تنظیم می‌شود و هنگام خطا دقیق گفته می‌شود. فقط محتوایی را دانلود یا زیرنویس کن که حق استفاده از آن را داری.", resultsTitle:"فایل‌های آمادهٔ دانلود", editLink:"ویرایش زیرنویس‌ها", step1:"دریافت فایل", step2:"پیاده‌سازی صدا", step3:"ترجمه", step4:"ساخت ویدیو", working:"در حال ساخت زیرنویس:", done:"تمام شد.", captionsNote:"منبع متن: زیرنویس منتشرشدهٔ خود ویدیو", whisperNote:"منبع متن: پیاده‌سازی با Whisper", errPrefix:"خطا: ", reportLine:"گزارش کیفیت: {c} زیرنویس، {p}٪ سریع‌تر از حد خواندن، واژه‌نامه: {g}", styleChip:"سبک: {s}", play:"پخش ویدیو", pause:"توقف ویدیو", changeFile:"تغییر فایل", dl:"دانلود", sampleFa1:"امروز دربارهٔ ساختار جمله", sampleFa2:"در زبان انگلیسی صحبت می‌کنیم", sampleEn:"Today we talk about sentence structure in English", stageNames:{start:"دریافت فایل", download:"دریافت فایل", extract:"پیاده‌سازی صدا", captions:"پیاده‌سازی صدا", transcribe:"پیاده‌سازی صدا", translate:"ترجمه", write:"ساخت ویدیو", burn:"ساخت ویدیو", done:"ساخت ویدیو"}, kinds:{srt:"زیرنویس", bilingual:"زیرنویس دوزبانه", transcript:"متن کامل", burned:"ویدیوی زیرنویس‌دار", report:"گزارش کیفیت"}, srtFa:"زیرنویس فارسی", srtEn:"زیرنویس انگلیسی" },
+  en: { docTitle:"SubFa: Persian subtitles from any video", title:"Persian subtitles from any video", lead:"Send a video or audio file, or paste a video link. Get Persian subtitles, a bilingual subtitle file and a full transcript back. Files are processed here and deleted.", dropTitle:"Drop a file here", dropSub:"or click to choose a file (video or audio)", urlLabel:"Video link", orDrop:"or drop the file on the stage", targetLabel:"Subtitle language", faOpt:"Persian", enOpt:"English", glossaryLabel:"Glossary (optional)", noneOpt:"None", generalOpt:"General", programmingOpt:"Programming", gamingOpt:"Gaming", styleLabel:"Burn-in style", cinemaOpt:"Cinema", reelsOpt:"Reels (vertical 9:16)", learningOpt:"Learning (bilingual)", qualityLabel:"Video quality", qSource:"Source (best)", toneLabel:"Persian subtitle tone", toneAuto:"Auto", toneFormal:"Formal", toneInformal:"Informal", toneSimple:"Simple", metaLine:"Quality: {q} · Tone: {t}", thumbLine:"Subtitle text", thumbSub:"Style sample", burnOpt:"Also make the subtitled video", bilingualOpt:"Bilingual subtitles on the video", go:"Make subtitles", goAgain:"Make new subtitles", privacyNote:"Files are processed here and deleted afterwards.", newJob:"New job", foot:"Size and duration caps are set on the server and reported exactly when hit. Only download or subtitle content you have the right to use.", resultsTitle:"Files ready to download", editLink:"Edit subtitles", step1:"Get file", step2:"Transcribe", step3:"Translate", step4:"Build video", working:"Making subtitles:", done:"Done.", captionsNote:"Transcript source: the video's own published captions", whisperNote:"Transcript source: Whisper transcription", errPrefix:"Error: ", reportLine:"Quality: {c} cues, {p}% over the reading limit, glossary applied: {g}", styleChip:"Style: {s}", play:"Play video", pause:"Pause video", changeFile:"Change file", dl:"Download", sampleFa1:"امروز دربارهٔ ساختار جمله", sampleFa2:"در زبان انگلیسی صحبت می‌کنیم", sampleEn:"Today we talk about sentence structure in English", stageNames:{start:"Get file", download:"Get file", extract:"Transcribe", captions:"Transcribe", transcribe:"Transcribe", translate:"Translate", write:"Build video", burn:"Build video", done:"Build video"}, kinds:{srt:"Subtitles", bilingual:"Bilingual subtitles", transcript:"Transcript", burned:"Subtitled video", report:"Quality report"}, srtFa:"Persian subtitles", srtEn:"English subtitles" }
 };
 let lang = localStorage.getItem("subfa-lang") || "fa";
 const $ = (s) => document.querySelector(s);
@@ -406,6 +422,18 @@ function renderResults(id, job) {
       ? '<a href="/jobs/' + id + '/files/report">' + line + "</a>" : line;
     rl.style.display = "";
   } else rl.style.display = "none";
+  const ml = $("#metaLine");
+  if (job.quality || job.tone) {
+    const toneName = (v) => T[lang]["tone" + v.charAt(0).toUpperCase() + v.slice(1)] || v;
+    const qText = job.quality === "source" ? T[lang].qSource : (job.quality + "p");
+    let tText = toneName(job.tone || "auto");
+    if (job.tone_resolved && job.tone_resolved !== job.tone) {
+      const rn = toneName(job.tone_resolved);
+      if (rn !== job.tone_resolved) tText += " ← " + rn;
+    }
+    ml.textContent = T[lang].metaLine.replace("{q}", qText).replace("{t}", tText);
+    ml.style.display = "";
+  } else ml.style.display = "none";
   $("#editLink").href = "/jobs/" + id + "/edit";
   $("#results").classList.add("show");
 }
@@ -441,6 +469,8 @@ $("#form").addEventListener("submit", async (e) => {
   fd.append("burn", $("#burn").checked ? "true" : "false");
   fd.append("bilingual", $("#bilingual").checked ? "true" : "false");
   fd.append("style", $("#style").value);
+  fd.append("quality", $("#quality").value);
+  fd.append("tone", $("#tone").value);
   try {
     const created = await (await fetch("/jobs", { method: "POST", body: fd })).json();
     if (created.error) throw new Error(created.error);
