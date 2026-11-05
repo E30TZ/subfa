@@ -46,7 +46,7 @@ def test_style_presets_exist_and_differ():
 def test_learning_preset_shrinks_source_line():
     cues = [Cue(0, 2, "Hello world\nسلام دنیا")]
     ass = cues_to_ass(cues, style="learning")
-    assert "{\\fs13" in ass
+    assert "{\\fs34" in ass
     assert "Hello world" in ass and "سلام دنیا" in ass
 
 

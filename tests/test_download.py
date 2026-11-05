@@ -14,9 +14,12 @@ from subfa.download import (
     _is_youtube_url,
     base_options,
     choose_caption_track,
+    choose_invidious_streams,
     extract_url,
+    invidious_instances,
     is_url,
     load_caption_cues,
+    youtube_video_id,
 )
 
 
@@ -263,3 +266,212 @@ def test_android_fallback_not_tried_for_other_hosts(tmp_path, monkeypatch):
     assert result.media_path is None
     assert result.media_route is None
     assert fake.attempts == [["web", "mweb", "ios"]]
+
+
+# -- Invidious high quality route ------------------------------------
+
+
+def _vfmt(itag, codec, height, bitrate=1_000_000, fps=30):
+    return {
+        "itag": str(itag),
+        "encoding": codec,
+        "container": "mp4" if codec == "h264" else "webm",
+        "resolution": f"{height}p",
+        "qualityLabel": f"{height}p",
+        "fps": fps,
+        "bitrate": str(bitrate),
+        "type": f"video/{'mp4' if codec == 'h264' else 'webm'}",
+        "url": f"https://inst.example/v/{itag}",
+    }
+
+
+def _afmt(itag, codec="aac", bitrate=130_000):
+    return {
+        "itag": str(itag),
+        "encoding": codec,
+        "container": "m4a" if codec == "aac" else "webm",
+        "resolution": None,
+        "qualityLabel": None,
+        "fps": None,
+        "bitrate": str(bitrate),
+        "type": f"audio/{'mp4' if codec == 'aac' else 'webm'}",
+        "url": f"https://inst.example/a/{itag}",
+    }
+
+
+def test_youtube_video_id_extraction():
+    assert youtube_video_id("https://www.youtube.com/watch?v=abc123") == "abc123"
+    assert youtube_video_id("https://youtu.be/abc123?t=9") == "abc123"
+    assert youtube_video_id("https://www.youtube.com/shorts/abc123") == "abc123"
+    assert youtube_video_id("https://example.com/watch?v=abc123") is None
+
+
+def test_invidious_instances_config(monkeypatch):
+    monkeypatch.delenv("SUBFA_DISABLE_INVIDIOUS", raising=False)
+    monkeypatch.delenv("SUBFA_INVIDIOUS_INSTANCES", raising=False)
+    assert invidious_instances()[0] == "https://yt.chocolatemoo53.com"
+    monkeypatch.setenv(
+        "SUBFA_INVIDIOUS_INSTANCES", "https://a.example/, https://b.example"
+    )
+    assert invidious_instances() == ["https://a.example", "https://b.example"]
+    monkeypatch.setenv("SUBFA_DISABLE_INVIDIOUS", "1")
+    assert invidious_instances() == []
+
+
+def test_choose_invidious_streams_respects_height_cap():
+    formats = [
+        _vfmt(401, "av1", 2160), _vfmt(299, "h264", 1080),
+        _vfmt(298, "h264", 720), _vfmt(134, "h264", 360),
+        _afmt(140),
+    ]
+    video, audio, height = choose_invidious_streams(formats, 720)
+    assert (video["itag"], height) == ("298", 720)
+    assert audio["itag"] == "140"
+
+
+def test_choose_invidious_streams_prefers_h264_at_same_height():
+    formats = [
+        _vfmt(303, "vp9", 1080, bitrate=9_000_000),
+        _vfmt(299, "h264", 1080, bitrate=3_000_000),
+        _afmt(251, "opus"), _afmt(140),
+    ]
+    video, audio, height = choose_invidious_streams(formats, 1080)
+    assert video["itag"] == "299"
+    assert audio["itag"] == "140"
+
+
+def test_choose_invidious_streams_source_cap_takes_best_h264():
+    # Cap lifted (source quality): no H.264 exists above 1080, so
+    # the best H.264 wins over the taller VP9/AV1 formats.
+    formats = [
+        _vfmt(315, "vp9", 2160), _vfmt(400, "av1", 1440),
+        _vfmt(299, "h264", 1080), _vfmt(298, "h264", 720),
+        _afmt(140),
+    ]
+    video, _, height = choose_invidious_streams(formats, 10000)
+    assert (video["itag"], height) == ("299", 1080)
+
+
+def test_choose_invidious_streams_never_above_cap():
+    formats = [_vfmt(298, "h264", 720), _afmt(140)]
+    assert choose_invidious_streams(formats, 360) is None
+    assert choose_invidious_streams([], 1080) is None
+    assert choose_invidious_streams([_vfmt(299, "h264", 1080)], 1080) is None
+
+
+def test_choose_invidious_streams_audio_fallback_is_first():
+    formats = [_vfmt(299, "h264", 1080), _afmt(251, "opus"), _afmt(250, "opus")]
+    _, audio, _ = choose_invidious_streams(formats, 1080)
+    assert audio["itag"] == "251"
+
+
+def _inv_fixture():
+    return {
+        "lengthSeconds": 120,
+        "adaptiveFormats": [
+            _vfmt(299, "h264", 1080), _vfmt(298, "h264", 720),
+            _vfmt(134, "h264", 360), _afmt(140),
+        ],
+    }
+
+
+def _patch_invidious_seams(monkeypatch, *, info_by_instance, mux_ok=True):
+    """Replace the network and mux seams of the Invidious route
+    with recording fakes. info_by_instance maps a base URL to a
+    fixture dict, or to an Exception instance to raise."""
+    calls = {"info": [], "fetch": []}
+
+    def fake_info(self, instance, video_id):
+        calls["info"].append(instance)
+        outcome = info_by_instance[instance]
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    def fake_fetch(self, url, dest, budget_bytes):
+        calls["fetch"].append(url)
+        Path(dest).write_bytes(b"part-bytes")
+        return len(b"part-bytes")
+
+    def fake_mux(video_part, audio_part, dest):
+        if not mux_ok:
+            return False
+        Path(dest).write_bytes(b"muxed-media")
+        return True
+
+    monkeypatch.setattr(YtDlpDownloader, "_invidious_video_info", fake_info)
+    monkeypatch.setattr(YtDlpDownloader, "_fetch_to_file", fake_fetch)
+    monkeypatch.setattr(
+        YtDlpDownloader, "_mux_media_parts", staticmethod(fake_mux)
+    )
+    return calls
+
+
+def test_youtube_media_route_invidious_when_primary_gated(tmp_path, monkeypatch):
+    monkeypatch.setenv(
+        "SUBFA_INVIDIOUS_INSTANCES", "https://a.example,https://b.example"
+    )
+    monkeypatch.delenv("SUBFA_DISABLE_INVIDIOUS", raising=False)
+    fake = _install_fake_yt_dlp(monkeypatch, primary_ok=False, android_ok=True)
+    calls = _patch_invidious_seams(
+        monkeypatch,
+        info_by_instance={
+            "https://a.example": RuntimeError("instance down"),
+            "https://b.example": _inv_fixture(),
+        },
+    )
+    result = YtDlpDownloader().download(
+        "https://www.youtube.com/watch?v=abc",
+        tmp_path / "job",
+        Settings(download_max_height=10000),
+    )
+    assert result.media_path is not None and result.media_path.exists()
+    assert result.media_path.read_bytes() == b"muxed-media"
+    assert result.media_route == "invidious-1080"
+    # Failover order: first instance tried first, second served.
+    assert calls["info"] == ["https://a.example", "https://b.example"]
+    # The android route was never needed.
+    assert fake.attempts == [["web", "mweb", "ios"]]
+    # The scratch parts folder is gone.
+    assert not (tmp_path / "job" / "_invidious").exists()
+
+
+def test_youtube_invidious_total_failure_falls_to_android(tmp_path, monkeypatch):
+    monkeypatch.setenv("SUBFA_INVIDIOUS_INSTANCES", "https://a.example")
+    monkeypatch.delenv("SUBFA_DISABLE_INVIDIOUS", raising=False)
+    fake = _install_fake_yt_dlp(monkeypatch, primary_ok=False, android_ok=True)
+    _patch_invidious_seams(
+        monkeypatch,
+        info_by_instance={"https://a.example": RuntimeError("down")},
+    )
+    result = YtDlpDownloader().download(
+        "https://youtu.be/abc", tmp_path / "job", Settings()
+    )
+    assert result.media_route == "android-360"
+    assert fake.attempts == [["web", "mweb", "ios"], ["android"]]
+
+
+def test_youtube_invidious_mux_failure_falls_to_android(tmp_path, monkeypatch):
+    monkeypatch.setenv("SUBFA_INVIDIOUS_INSTANCES", "https://a.example")
+    monkeypatch.delenv("SUBFA_DISABLE_INVIDIOUS", raising=False)
+    _install_fake_yt_dlp(monkeypatch, primary_ok=False, android_ok=True)
+    _patch_invidious_seams(
+        monkeypatch,
+        info_by_instance={"https://a.example": _inv_fixture()},
+        mux_ok=False,
+    )
+    result = YtDlpDownloader().download(
+        "https://youtu.be/abc", tmp_path / "job", Settings()
+    )
+    assert result.media_route == "android-360"
+
+
+def test_youtube_invidious_disabled_by_env(tmp_path, monkeypatch):
+    monkeypatch.setenv("SUBFA_DISABLE_INVIDIOUS", "1")
+    _install_fake_yt_dlp(monkeypatch, primary_ok=False, android_ok=True)
+    calls = _patch_invidious_seams(monkeypatch, info_by_instance={})
+    result = YtDlpDownloader().download(
+        "https://youtu.be/abc", tmp_path / "job", Settings()
+    )
+    assert result.media_route == "android-360"
+    assert calls["info"] == []
