@@ -7,9 +7,11 @@ algorithm, so Persian lines render right to left correctly.
 
 Two things keep the rendering identical and readable on every host:
 
-- The Vazirmatn TTFs are bundled in assets/fonts and handed to the
-  ass filter through its fontsdir option, so libass never depends on
-  a system installed font.
+- The Vazirmatn TTFs are bundled in assets/fonts, copied into the
+  burn working directory and handed to the ass filter through a
+  relative fontsdir (fontsdir=.), so libass never depends on a
+  system installed font and no host path is embedded in the filter
+  string (a raw Windows path there breaks ffmpeg's filter parser).
 - Font size and margins scale with the actual output frame height
   (cinema targets about 5 percent of the frame height). A fixed
   PlayRes tuned for tall videos would shrink the text to nothing on
@@ -20,6 +22,7 @@ Two things keep the rendering identical and readable on every host:
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -30,7 +33,8 @@ from .srt import Cue
 DEFAULT_FONT = "Vazirmatn"
 
 # Where the bundled Vazirmatn TTFs live (OFL licensed, see the
-# OFL.txt beside them). Passed to the ass filter as fontsdir.
+# OFL.txt beside them). Copied into the burn working directory and
+# referenced from the filter as the relative fontsdir ".".
 BUNDLED_FONTS_DIR = REPO_ROOT / "assets" / "fonts"
 
 # The presets' absolute values are tuned at this reference height;
@@ -184,7 +188,7 @@ def build_burn_command(
     ass_path: str | Path,
     output_path: str | Path,
     max_height: int | None = None,
-    fontsdir: str | Path | None = None,
+    fonts: bool = False,
 ) -> list[str]:
     """Build the ffmpeg command for burn-in (no shell involved).
 
@@ -195,9 +199,15 @@ def build_burn_command(
     ass=x.ass with "No option name near", while ffmpeg 6/7 accepted
     them. burn_subtitles runs the command with cwd set to the .ass
     directory, and only the filter-special characters in the
-    filename itself are escaped here. fontsdir, when given, points
-    libass at the bundled Vazirmatn fonts so rendering does not
-    depend on fonts installed on the host.
+    filename itself are escaped here.
+
+    No absolute path of any kind goes into the filterchain: an
+    earlier version embedded the fonts directory as a raw path
+    (fontsdir=D:\\a\\...) and ffmpeg's filter parser broke on the
+    backslash escapes. With fonts=True the filter instead gets the
+    RELATIVE fontsdir "." and burn_subtitles copies the bundled
+    Vazirmatn TTFs into that same working directory first, so
+    rendering still does not depend on fonts installed on the host.
 
     With max_height set, a scale filter runs first and caps the
     output height; min() means a shorter source is never upscaled.
@@ -205,8 +215,8 @@ def build_burn_command(
     """
     escaped = _escape_filter_value(Path(ass_path).name)
     ass_filter = f"ass=filename={escaped}"
-    if fontsdir:
-        ass_filter += f":fontsdir={_escape_filter_value(str(fontsdir))}"
+    if fonts:
+        ass_filter += ":fontsdir=."
     filters = []
     if max_height:
         filters.append(f"scale=-2:min(ih\\,{int(max_height)})")
@@ -219,6 +229,29 @@ def build_burn_command(
         "-c:a", "copy",
         str(output_path),
     ]
+
+
+def _copy_fonts_into(fonts_dir: Path, dest_dir: Path) -> bool:
+    """Copy the .ttf files from fonts_dir into dest_dir.
+
+    Files already present in dest_dir are reused, not recopied.
+    Returns True when at least one font file is in place there.
+    """
+    copied = False
+    for src in sorted(fonts_dir.iterdir()):
+        if src.is_file() and src.suffix.lower() == ".ttf":
+            dest = dest_dir / src.name
+            if not dest.exists():
+                shutil.copy2(src, dest)
+            copied = True
+    return copied
+
+
+def _libass_missing(stderr: str) -> bool:
+    """True when ffmpeg failed because its build has no ass filter."""
+    if "No such filter" in stderr and "ass" in stderr:
+        return True
+    return "Filter not found" in stderr
 
 
 def burn_subtitles(
@@ -236,7 +269,9 @@ def burn_subtitles(
     The input is probed so the ASS PlayRes and font size match the
     actual output frame: when max_height caps the output, the size
     math follows the same min() rule as the scale filter. fonts_dir
-    defaults to the bundled Vazirmatn folder when it exists.
+    defaults to the bundled Vazirmatn folder when it exists; its
+    fonts are copied into the working directory and the filter
+    references them with the relative fontsdir ".".
     """
     output_path = Path(output_path)
     ass_dir = Path(work_dir) if work_dir else output_path.parent
@@ -262,9 +297,12 @@ def burn_subtitles(
     )
     if fonts_dir is None and BUNDLED_FONTS_DIR.is_dir():
         fonts_dir = BUNDLED_FONTS_DIR
+    fonts_ready = False
+    if fonts_dir is not None and Path(fonts_dir).is_dir():
+        fonts_ready = _copy_fonts_into(Path(fonts_dir), ass_dir)
     command = build_burn_command(
         input_video, ass_path, output_path,
-        max_height=max_height, fontsdir=fonts_dir,
+        max_height=max_height, fonts=fonts_ready,
     )
     completed = subprocess.run(
         command, capture_output=True, text=True, cwd=str(ass_dir)
@@ -274,8 +312,21 @@ def burn_subtitles(
         # puts the generic failure last and the actual cause (bad
         # filter, missing library, font problem) a few lines above.
         tail = "\n".join(completed.stderr.strip().splitlines()[-8:])
+        detail = tail if tail else "unknown error"
+        if _libass_missing(completed.stderr):
+            # A clear, actionable message first: some ffmpeg builds
+            # (e.g. Homebrew's plain ffmpeg formula) ship without
+            # libass, so the ass filter simply does not exist there.
+            raise SubfaError(
+                "Burning subtitles into the video failed: your ffmpeg "
+                "build lacks the libass subtitle filter (ass), which "
+                "SubFa needs to draw subtitles. Install a full ffmpeg "
+                "build that includes libass (on macOS the ffmpeg-full "
+                "formula, or a static build), then try again. "
+                f"ffmpeg said: {detail}"
+            )
         raise SubfaError(
             "Burning subtitles into the video failed. "
-            f"ffmpeg said: {tail if tail else 'unknown error'}"
+            f"ffmpeg said: {detail}"
         )
     return output_path
