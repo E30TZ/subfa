@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import re
 import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable
 
@@ -29,11 +29,35 @@ from .download import Downloader, load_caption_cues
 from .fa_text import clean_fa_text
 from .glossary import apply_glossary_counted, load_glossary
 from .report import QualityReport, build_report
-from .srt import Cue, cues_to_srt, segment_to_cues
+from .srt import (
+    Cue,
+    cues_to_srt,
+    looks_rolling,
+    reconstruct_rolling_cues,
+    segment_to_cues,
+)
+from .tone import TONES, informalize, resegment_simple, resolve_tone
 from .translate import NoneTranslator, Translator, translate_with_context
 from .transcribe import TranscriptionEngine
 
 ProgressCallback = Callable[[str, float, str], None]
+
+# Video quality choices shared by every surface. "source" keeps the
+# original resolution; a number caps both the link download height
+# and the burned output height (never upscales).
+QUALITY_CHOICES = ("source", "720", "480", "360")
+QUALITY_HEIGHTS = {"720": 720, "480": 480, "360": 360}
+DEFAULT_QUALITY = "720"
+
+
+def normalize_quality(value: str | None) -> str:
+    value = (value or DEFAULT_QUALITY).strip().lower()
+    return value if value in QUALITY_CHOICES else DEFAULT_QUALITY
+
+
+def normalize_tone(value: str | None) -> str:
+    value = (value or "auto").strip().lower()
+    return value if value in TONES else "auto"
 
 
 def _noop_progress(stage: str, fraction: float, note: str) -> None:
@@ -50,6 +74,11 @@ class JobResult:
     title: str = ""
     cue_count: int = 0
     report: QualityReport | None = None
+    quality: str = DEFAULT_QUALITY
+    tone_requested: str = "auto"
+    tone_resolved: str = ""
+    caption_track: str = ""  # e.g. "automatic en", "" for whisper jobs
+    media_route: str = ""  # "standard" / "android-360" for link jobs
 
 
 class Pipeline:
@@ -79,6 +108,8 @@ class Pipeline:
         burn: bool = False,
         bilingual_burn: bool = False,
         style: str | None = None,
+        quality: str | None = None,
+        tone: str | None = None,
     ) -> JobResult:
         input_path = Path(input_path)
         if not input_path.exists():
@@ -95,8 +126,11 @@ class Pipeline:
             bilingual_burn=bilingual_burn,
             captions_path=None,
             captions_language=None,
+            captions_kind=None,
             title="",
             style=style or self.settings.style,
+            quality=normalize_quality(quality),
+            tone=normalize_tone(tone),
         )
 
     def run_url(
@@ -110,15 +144,26 @@ class Pipeline:
         burn: bool = False,
         bilingual_burn: bool = False,
         style: str | None = None,
+        quality: str | None = None,
+        tone: str | None = None,
     ) -> JobResult:
         """Download a link into download_dir, process it, write outputs
         to out_dir. Callers delete download_dir with the job, so the
         downloaded media never lingers."""
         if self.downloader is None:
             raise SubfaError("Link input is not enabled in this installation.")
+        quality = normalize_quality(quality)
         download_dir = Path(download_dir)
         self.progress("download", 0.05, "")
-        downloaded = self.downloader.download(url, download_dir, self.settings)
+        # The chosen quality caps the download height for this job
+        # only; "source" lifts the cap to an effectively unbounded
+        # height so the best available format wins.
+        height = QUALITY_HEIGHTS.get(quality)
+        dl_settings = replace(
+            self.settings,
+            download_max_height=height if height else 10000,
+        )
+        downloaded = self.downloader.download(url, download_dir, dl_settings)
         note = "captions" if downloaded.captions_path else "whisper"
         self.progress("download", 0.2, note)
         return self._process(
@@ -131,8 +176,12 @@ class Pipeline:
             bilingual_burn=bilingual_burn,
             captions_path=downloaded.captions_path,
             captions_language=downloaded.captions_language,
+            captions_kind=downloaded.captions_kind,
             title=downloaded.title,
             style=style or self.settings.style,
+            quality=quality,
+            tone=normalize_tone(tone),
+            media_route=downloaded.media_route or "",
         )
 
     # -- internals ----------------------------------------------------
@@ -160,8 +209,12 @@ class Pipeline:
         source: str,
         captions_path: Path | None,
         captions_language: str | None,
-    ) -> tuple[list[Cue], str, str, str]:
-        """Return (source cues, source language, path used, engine info)."""
+        captions_kind: str | None = None,
+    ) -> tuple[list[Cue], str, str, str, str]:
+        """Return (source cues, source language, path used, engine
+        info, caption track label). The track label names the exact
+        track used ("automatic en", "manual fa") and is empty for
+        transcription jobs."""
         if captions_path is not None and self.settings.captions_fast_path:
             cues = load_caption_cues(captions_path)
             if cues:
@@ -169,7 +222,15 @@ class Pipeline:
                 language = captions_language or (
                     source if source != "auto" else "en"
                 )
-                return cues, language, "captions", f"captions ({language})"
+                # Rolling automatic captions repeat the previous
+                # cue's tail in every cue. Rebuild them once, here,
+                # before cleanup, translation or anything else reads
+                # them. The pattern check also catches rolling
+                # tracks whose origin is unknown.
+                if captions_kind == "automatic" or looks_rolling(cues):
+                    cues = reconstruct_rolling_cues(cues)
+                track = f"{captions_kind or 'published'} {language}"
+                return cues, language, "captions", f"captions ({language})", track
             self.progress("captions", 0.3, "fallback")
         if media_path is None:
             raise SubfaError(
@@ -187,7 +248,7 @@ class Pipeline:
             engine_info = f"{result.engine} / {result.model}"
         else:
             engine_info = f"{self.engine.name} / {self.settings.model}"
-        return cues, result.language, "whisper", engine_info
+        return cues, result.language, "whisper", engine_info, ""
 
     def _process(
         self,
@@ -200,8 +261,12 @@ class Pipeline:
         bilingual_burn: bool,
         captions_path: Path | None,
         captions_language: str | None,
+        captions_kind: str | None,
         title: str,
         style: str,
+        quality: str,
+        tone: str,
+        media_route: str = "",
     ) -> JobResult:
         out_dir.mkdir(parents=True, exist_ok=True)
         work_dir = out_dir / "_work"
@@ -212,8 +277,19 @@ class Pipeline:
             slug = re.sub(r"[^A-Za-z0-9]+", "-", title).strip("-")[:48]
             stem = slug or "video"
 
-        source_cues, source_language, path_used, engine_info = self._source_cues(
-            media_path, work_dir, source, captions_path, captions_language
+        (
+            source_cues,
+            source_language,
+            path_used,
+            engine_info,
+            caption_track,
+        ) = self._source_cues(
+            media_path,
+            work_dir,
+            source,
+            captions_path,
+            captions_language,
+            captions_kind,
         )
         if not source_cues:
             raise SubfaError(
@@ -268,6 +344,38 @@ class Pipeline:
                 for cue, (text, _) in zip(source_cues, counted)
             ]
 
+        # Tone layer (Persian output only). formal rewrites nothing;
+        # informal softens the translated texts themselves, so the
+        # bilingual file carries the same wording; simple re-segments
+        # the main track only, because the bilingual file pairs lines
+        # with the source one to one and must keep its segmentation.
+        tone_resolved = ""
+        if target == "fa":
+            tone_sample = (
+                translated_texts
+                if translated_texts is not None
+                else [cue.text for cue in target_cues]
+            )
+            tone_resolved = resolve_tone(tone, tone_sample)
+            if tone_resolved == "informal":
+                if translated_texts is not None:
+                    translated_texts = [
+                        informalize(text) for text in translated_texts
+                    ]
+                    target_cues = [
+                        Cue(cue.start, cue.end, text)
+                        for cue, text in zip(source_cues, translated_texts)
+                    ]
+                else:
+                    target_cues = [
+                        Cue(cue.start, cue.end, informalize(cue.text))
+                        for cue in target_cues
+                    ]
+            elif tone_resolved == "simple":
+                target_cues = resegment_simple(target_cues)
+        else:
+            tone_resolved = "not applied (target is not Persian)"
+
         self.progress("write", 0.75, "")
         target_srt = out_dir / f"{stem}.{target}.srt"
         target_srt.write_text(cues_to_srt(target_cues), encoding="utf-8")
@@ -302,6 +410,7 @@ class Pipeline:
                     font=self.settings.subtitle_font,
                     work_dir=work_dir,
                     style=style,
+                    max_height=QUALITY_HEIGHTS.get(quality),
                 )
                 outputs["burned"] = burned
 
@@ -312,6 +421,11 @@ class Pipeline:
             glossary_applied=glossary_applied,
             source_language=source_language,
             target_language=target,
+            quality=quality,
+            tone_requested=tone,
+            tone_resolved=tone_resolved,
+            caption_track=caption_track,
+            media_route=media_route,
         )
         report_path = out_dir / f"{stem}.report.txt"
         report_path.write_text(report.to_text(), encoding="utf-8")
@@ -327,4 +441,9 @@ class Pipeline:
             title=title,
             cue_count=len(source_cues),
             report=report,
+            quality=quality,
+            tone_requested=tone,
+            tone_resolved=tone_resolved,
+            caption_track=caption_track,
+            media_route=media_route,
         )

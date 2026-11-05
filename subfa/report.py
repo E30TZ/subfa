@@ -23,6 +23,11 @@ class QualityReport:
     glossary_applied: int
     source_language: str
     target_language: str
+    quality: str = ""
+    tone_requested: str = ""
+    tone_resolved: str = ""
+    caption_track: str = ""
+    media_route: str = ""
 
     @property
     def over_speed_percent(self) -> float:
@@ -41,6 +46,11 @@ class QualityReport:
             "glossary_applied": self.glossary_applied,
             "source_language": self.source_language,
             "target_language": self.target_language,
+            "quality": self.quality,
+            "tone_requested": self.tone_requested,
+            "tone_resolved": self.tone_resolved,
+            "caption_track": self.caption_track,
+            "media_route": self.media_route,
         }
 
     def to_text(self) -> str:
@@ -56,6 +66,17 @@ class QualityReport:
             f"Model / engine info: {self.model}",
             f"Glossary terms applied: {self.glossary_applied}",
             f"Languages: {self.source_language} -> {self.target_language}",
+        ]
+        if self.caption_track:
+            lines.append(f"Caption track: {self.caption_track}")
+        if self.media_route == "android-360":
+            lines.append("Media: android client (360p)")
+        if self.quality:
+            lines.append(f"Video quality: {self.quality}")
+        if self.tone_requested:
+            lines.append(f"Tone requested: {self.tone_requested}")
+            lines.append(f"Tone resolved: {self.tone_resolved}")
+        lines += [
             "",
             "گزارش کیفیت SubFa",
             f"تعداد زیرنویس‌ها: {self.cue_count}",
@@ -64,6 +85,16 @@ class QualityReport:
             f"مسیر متن: {self.path_used}",
             f"اصطلاحات واژه‌نامه اعمال‌شده: {self.glossary_applied}",
         ]
+        if self.caption_track:
+            lines.append(f"ترک زیرنویس: {self.caption_track}")
+        if self.media_route == "android-360":
+            lines.append("رسانه: کلاینت اندروید (360p)")
+        if self.quality:
+            lines.append(f"کیفیت ویدیو: {self.quality}")
+        if self.tone_requested:
+            lines.append(
+                f"لحن: {self.tone_requested} ← {self.tone_resolved}"
+            )
         return "\n".join(lines) + "\n"
 
 
@@ -74,6 +105,11 @@ def build_report(
     glossary_applied: int,
     source_language: str,
     target_language: str,
+    quality: str = "",
+    tone_requested: str = "",
+    tone_resolved: str = "",
+    caption_track: str = "",
+    media_route: str = "",
 ) -> QualityReport:
     over = 0
     for cue in cues:
@@ -91,4 +127,9 @@ def build_report(
         glossary_applied=glossary_applied,
         source_language=source_language,
         target_language=target_language,
+        quality=quality,
+        tone_requested=tone_requested,
+        tone_resolved=tone_resolved,
+        caption_track=caption_track,
+        media_route=media_route,
     )
