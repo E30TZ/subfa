@@ -15,6 +15,7 @@ used ("captions" or "whisper") so users can be told honestly.
 
 from __future__ import annotations
 
+import re
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -45,6 +46,7 @@ class JobResult:
     source_language: str = ""
     target_language: str = ""
     path_used: str = ""  # "captions" or "whisper"
+    media_missing: bool = False  # link jobs whose media was gated
     title: str = ""
     cue_count: int = 0
     report: QualityReport | None = None
@@ -153,7 +155,7 @@ class Pipeline:
 
     def _source_cues(
         self,
-        media_path: Path,
+        media_path: Path | None,
         work_dir: Path,
         source: str,
         captions_path: Path | None,
@@ -169,6 +171,11 @@ class Pipeline:
                 )
                 return cues, language, "captions", f"captions ({language})"
             self.progress("captions", 0.3, "fallback")
+        if media_path is None:
+            raise SubfaError(
+                "The video file could not be downloaded from this "
+                "link and it has no usable captions."
+            )
         self.progress("extract", 0.35, "")
         audio_path = self._extract_audio(media_path, work_dir)
         self.progress("transcribe", 0.45, "whisper")
@@ -184,7 +191,7 @@ class Pipeline:
 
     def _process(
         self,
-        media_path: Path,
+        media_path: Path | None,
         out_dir: Path,
         target: str,
         source: str,
@@ -199,7 +206,11 @@ class Pipeline:
         out_dir.mkdir(parents=True, exist_ok=True)
         work_dir = out_dir / "_work"
         work_dir.mkdir(parents=True, exist_ok=True)
-        stem = media_path.stem
+        if media_path is not None:
+            stem = media_path.stem
+        else:
+            slug = re.sub(r"[^A-Za-z0-9]+", "-", title).strip("-")[:48]
+            stem = slug or "video"
 
         source_cues, source_language, path_used, engine_info = self._source_cues(
             media_path, work_dir, source, captions_path, captions_language
@@ -278,7 +289,9 @@ class Pipeline:
         outputs["transcript"] = transcript
 
         if burn:
-            if not is_video(media_path):
+            if media_path is None:
+                self.progress("burn", 0.85, "skipped-no-video")
+            elif not is_video(media_path):
                 self.progress("burn", 0.85, "skipped-audio")
             else:
                 self.progress("burn", 0.85, "")
@@ -310,6 +323,7 @@ class Pipeline:
             source_language=source_language,
             target_language=target,
             path_used=path_used,
+            media_missing=media_path is None,
             title=title,
             cue_count=len(source_cues),
             report=report,

@@ -10,6 +10,7 @@ Tests use FakeDownloader, so the suite never touches the network.
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 from dataclasses import dataclass
@@ -37,7 +38,7 @@ def extract_url(text: str) -> str | None:
 
 @dataclass
 class DownloadResult:
-    media_path: Path
+    media_path: Path | None = None
     captions_path: Path | None = None
     captions_language: str | None = None
     title: str = ""
@@ -86,6 +87,30 @@ class FakeDownloader(Downloader):
         )
 
 
+def base_options() -> dict:
+    """yt-dlp options shared by every pass.
+
+    When the environment names a CA bundle (SSL_CERT_FILE or
+    REQUESTS_CA_BUNDLE, e.g. behind a TLS-intercepting egress
+    proxy), yt-dlp must use the system trust store instead of
+    certifi: its "no-certifi" compat opt makes it call
+    load_default_certs(), which honours SSL_CERT_FILE. Without
+    this, every HTTPS request dies with CERTIFICATE_VERIFY_FAILED.
+    """
+    options = {"quiet": True, "no_warnings": True}
+    if os.environ.get("SSL_CERT_FILE") or os.environ.get("REQUESTS_CA_BUNDLE"):
+        options["compat_opts"] = ["no-certifi"]
+    # YouTube's default player clients are bot-checked on datacenter
+    # IPs ("Sign in to confirm you're not a bot"). The web/mweb/ios
+    # clients still answer from such IPs with real formats and caption
+    # tracks, so prefer them; the key only affects the youtube
+    # extractor, every other site is untouched.
+    options["extractor_args"] = {
+        "youtube": {"player_client": ["web", "mweb", "ios"]}
+    }
+    return options
+
+
 class YtDlpDownloader(Downloader):
     """Real downloader backed by yt-dlp (Python API)."""
 
@@ -107,8 +132,11 @@ class YtDlpDownloader(Downloader):
         max_height = settings.download_max_height
 
         # Pass 1: metadata only, so limits are checked before any
-        # large file moves.
-        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True}) as ydl:
+        # large file moves. ignore_no_formats_error keeps metadata
+        # and caption tracks readable on hosts where the site gates
+        # the media formats themselves (YouTube on datacenter IPs).
+        meta_options = {**base_options(), "ignore_no_formats_error": True}
+        with yt_dlp.YoutubeDL(meta_options) as ydl:
             try:
                 info = ydl.extract_info(url, download=False)
             except Exception as exc:
@@ -121,8 +149,7 @@ class YtDlpDownloader(Downloader):
         # Pass 2: download media at a capped quality (subtitling does
         # not need 4K) and the published captions when they exist.
         options = {
-            "quiet": True,
-            "no_warnings": True,
+            **base_options(),
             "outtmpl": str(dest_dir / "source.%(ext)s"),
             "format": (
                 f"bv*[height<={max_height}]+ba/"
@@ -139,6 +166,19 @@ class YtDlpDownloader(Downloader):
             try:
                 ydl.download([url])
             except Exception as exc:
+                # Media gated (YouTube serves only storyboards to
+                # datacenter IPs): the caption tracks from pass 1 are
+                # still fetchable, and subtitles alone beat nothing.
+                fallback = self._captions_only(info, dest_dir)
+                if fallback is not None:
+                    captions_path, captions_language = fallback
+                    return DownloadResult(
+                        media_path=None,
+                        captions_path=captions_path,
+                        captions_language=captions_language,
+                        title=title,
+                        duration_seconds=float(duration) if duration else None,
+                    )
                 raise SubfaError(f"Download failed: {exc}") from exc
 
         media_files = sorted(
@@ -170,6 +210,64 @@ class YtDlpDownloader(Downloader):
             title=title,
             duration_seconds=float(duration) if duration else None,
         )
+
+
+    def _captions_only(self, info: dict, dest_dir: Path):
+        """Fetch one caption track straight from the pass-1 metadata.
+
+        Returns (path, language) or None. Prefers manual subtitles
+        over automatic ones, English over other languages, and the
+        plain SRT rendering of the track. The fetch honours the
+        environment CA bundle like every other request here."""
+        import ssl
+        import urllib.request
+
+        tracks: dict = {}
+        for source in (info.get("subtitles"), info.get("automatic_captions")):
+            if source:
+                for language, entries in source.items():
+                    tracks.setdefault(language, entries)
+        if not tracks:
+            return None
+        languages = [lang for lang in ("en", "fa") if lang in tracks]
+        languages += [lang for lang in tracks if lang not in languages]
+        context = ssl.create_default_context()
+        bundle = os.environ.get("SSL_CERT_FILE") or os.environ.get(
+            "REQUESTS_CA_BUNDLE"
+        )
+        if bundle:
+            try:
+                context.load_verify_locations(bundle)
+            except (OSError, ssl.SSLError):
+                pass
+        for language in languages:
+            srt_url = next(
+                (
+                    entry.get("url")
+                    for entry in tracks[language]
+                    if entry.get("ext") == "srt" and entry.get("url")
+                ),
+                None,
+            )
+            if not srt_url:
+                continue
+            request = urllib.request.Request(
+                srt_url, headers={"User-Agent": "Mozilla/5.0"}
+            )
+            try:
+                with urllib.request.urlopen(
+                    request, context=context, timeout=30
+                ) as response:
+                    raw = response.read()
+            except Exception:
+                continue
+            text = raw.decode("utf-8", errors="replace")
+            if "-->" not in text:
+                continue
+            path = dest_dir / f"source.{language}.srt"
+            path.write_text(text, encoding="utf-8")
+            return path, language
+        return None
 
 
 def load_caption_cues(captions_path: str | Path) -> list[Cue]:
