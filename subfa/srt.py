@@ -228,3 +228,99 @@ def segment_to_cues(segments) -> list[Cue]:
     for segment in segments:
         cues.extend(split_segment(segment.start, segment.end, segment.text))
     return cues
+
+
+# -- Rolling caption repair -------------------------------------------
+# YouTube automatic captions "roll": the caption window keeps the
+# previous words on screen and appends the new one, so every cue
+# repeats the tail of the cue before it. Imported raw, that is
+# unreadable and it poisons translation (every sentence translated
+# three times, half of it duplicated). The repair rebuilds the word
+# stream once, with each word timed by the cue that introduced it,
+# then re-segments the stream at sentence boundaries with the normal
+# craft rules in split_segment.
+
+
+def word_overlap(previous: list[str], current: list[str]) -> int:
+    """Length of the longest suffix of `previous` that is also a
+    prefix of `current` (in whole words)."""
+    best = 0
+    for size in range(1, min(len(previous), len(current)) + 1):
+        if previous[-size:] == current[:size]:
+            best = size
+    return best
+
+
+def looks_rolling(cues: list[Cue], min_overlap: int = 2) -> bool:
+    """True when a large share of consecutive cue pairs overlap the
+    way rolling automatic captions do."""
+    if len(cues) < 4:
+        return False
+    pairs = 0
+    hits = 0
+    for previous, current in zip(cues, cues[1:]):
+        prev_words = previous.text.split()
+        cur_words = current.text.split()
+        if not prev_words or not cur_words:
+            continue
+        pairs += 1
+        if (
+            word_overlap(prev_words, cur_words) >= min_overlap
+            or cur_words[: len(prev_words)] == prev_words
+        ):
+            hits += 1
+    return pairs > 0 and hits / pairs >= 0.4
+
+
+_ROLLING_SENTENCE_END = (".", "!", "?", "؟", "…")
+
+
+def _is_sentence_end(token: str) -> bool:
+    stripped = token.rstrip("\"'»”’)")
+    return stripped.endswith(_ROLLING_SENTENCE_END) or stripped.endswith("...")
+
+
+def reconstruct_rolling_cues(cues: list[Cue]) -> list[Cue]:
+    """Rebuild clean, sentence-based cues from rolling captions.
+
+    Words are deduplicated across consecutive cues (each word kept
+    once, timed by the cue that first showed it), grouped into
+    sentences, and each sentence is re-segmented with split_segment
+    so the usual line length and reading speed rules hold.
+    """
+    words: list[tuple[str, float, float]] = []  # (token, start, end)
+    stream: list[str] = []
+    for cue in cues:
+        tokens = cue.text.split()
+        if not tokens:
+            continue
+        skip = word_overlap(stream, tokens)
+        fresh = tokens[skip:]
+        if not fresh:
+            continue
+        span = max(cue.end - cue.start, 0.1)
+        for index, token in enumerate(fresh):
+            start = cue.start + span * index / len(fresh)
+            end = cue.start + span * (index + 1) / len(fresh)
+            words.append((token, start, end))
+            stream.append(token)
+    if not words:
+        return []
+
+    sentences: list[list[tuple[str, float, float]]] = []
+    current: list[tuple[str, float, float]] = []
+    for entry in words:
+        current.append(entry)
+        if _is_sentence_end(entry[0]):
+            sentences.append(current)
+            current = []
+    if current:
+        sentences.append(current)
+
+    rebuilt: list[Cue] = []
+    for sentence in sentences:
+        text = " ".join(token for token, _, _ in sentence)
+        start = sentence[0][1]
+        end = max(sentence[-1][2], start + 0.5)
+        rebuilt.extend(split_segment(start, end, text))
+    return rebuilt

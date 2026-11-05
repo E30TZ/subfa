@@ -104,6 +104,7 @@ def build_burn_command(
     input_video: str | Path,
     ass_path: str | Path,
     output_path: str | Path,
+    max_height: int | None = None,
 ) -> list[str]:
     """Build the ffmpeg command for burn-in (no shell involved).
 
@@ -114,6 +115,10 @@ def build_burn_command(
     "No option name near"). burn_subtitles runs the command with
     cwd set to the .ass directory, and only the filter-special
     characters in the filename itself are escaped here.
+
+    With max_height set, a scale filter runs first and caps the
+    output height; min() means a shorter source is never upscaled.
+    The subtitles are drawn after scaling, at the output size.
     """
     name = Path(ass_path).name
     escaped = (
@@ -125,11 +130,15 @@ def build_burn_command(
         .replace("[", "\\[")
         .replace("]", "\\]")
     )
+    filters = []
+    if max_height:
+        filters.append(f"scale=-2:min(ih\\,{int(max_height)})")
+    filters.append(f"ass={escaped}")
     return [
         "ffmpeg",
         "-y",
         "-i", str(input_video),
-        "-vf", f"ass={escaped}",
+        "-vf", ",".join(filters),
         "-c:a", "copy",
         str(output_path),
     ]
@@ -142,6 +151,7 @@ def burn_subtitles(
     font: str = DEFAULT_FONT,
     work_dir: str | Path | None = None,
     style: str = DEFAULT_STYLE,
+    max_height: int | None = None,
 ) -> Path:
     """Write the ASS file and run ffmpeg. Returns the output path."""
     output_path = Path(output_path)
@@ -149,7 +159,9 @@ def burn_subtitles(
     ass_dir.mkdir(parents=True, exist_ok=True)
     ass_path = ass_dir / (output_path.stem + ".ass")
     ass_path.write_text(cues_to_ass(cues, font=font, style=style), encoding="utf-8")
-    command = build_burn_command(input_video, ass_path, output_path)
+    command = build_burn_command(
+        input_video, ass_path, output_path, max_height=max_height
+    )
     completed = subprocess.run(
         command, capture_output=True, text=True, cwd=str(ass_dir)
     )

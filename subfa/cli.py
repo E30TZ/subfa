@@ -70,6 +70,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Burn the bilingual subtitles (source plus translation) instead of the target ones.")
     parser.add_argument("--style", choices=["cinema", "reels", "learning"], default=None,
                         help="Burn-in style preset: cinema (default), reels (vertical 9:16 safe area), learning (bilingual, source smaller above translation).")
+    parser.add_argument("--quality", choices=["source", "720", "480", "360"], default="720",
+                        help="Video quality: caps the link download height and the burned video height (default: 720). 'source' keeps the original resolution.")
+    parser.add_argument("--tone", choices=["auto", "formal", "informal", "simple"], default="auto",
+                        help="Persian subtitle tone: auto (default, informal only when the text already sounds colloquial), formal, informal (colloquial softening), simple (shorter cues, one idea each).")
     parser.add_argument("-o", "--out", default="subfa-out",
                         help="Output folder (default: subfa-out). For links, a work folder.")
     return parser
@@ -133,6 +137,8 @@ def main(argv: list[str] | None = None) -> int:
                     burn=args.burn,
                     bilingual_burn=args.bilingual,
                     style=args.style,
+                    quality=args.quality,
+                    tone=args.tone,
                 )
         else:
             result = pipeline.run_file(
@@ -144,6 +150,8 @@ def main(argv: list[str] | None = None) -> int:
                 burn=args.burn,
                 bilingual_burn=args.bilingual,
                 style=args.style,
+                quality=args.quality,
+                tone=args.tone,
             )
     except SubfaError as exc:
         code = str(exc)
@@ -155,6 +163,9 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     print(f"Transcript source: {result.path_used}")
+    if result.caption_track:
+        print(f"Caption track: {result.caption_track}")
+    print(f"Quality: {result.quality} · Tone: {result.tone_requested} -> {result.tone_resolved}")
     for kind, path in result.outputs.items():
         print(f"{kind}: {path}")
     if result.report is not None:
