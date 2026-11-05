@@ -39,6 +39,10 @@ def test_burn_command_construction():
     assert cmd[cmd.index("-crf") + 1] == "18"
     assert cmd[cmd.index("-preset") + 1] == "medium"
     assert cmd[cmd.index("-pix_fmt") + 1] == "yuv420p"
+    # faststart puts the moov atom at the front of the MP4, so chat
+    # players probe the real dimensions instead of framing the file
+    # with a wrong aspect ratio, and streaming starts progressively.
+    assert cmd[cmd.index("-movflags") + 1] == "+faststart"
 
 
 def test_burn_command_uses_bare_name_for_full_paths():
@@ -225,3 +229,6 @@ def test_burn_end_to_end_tiny_video(tmp_path):
     out = tmp_path / "tiny.subbed.mp4"
     burn_subtitles(video, [Cue(0.0, 0.9, "Hello subtitles")], out, work_dir=tmp_path)
     assert out.exists() and out.stat().st_size > 0
+    # faststart in the real file: the moov atom precedes mdat.
+    data = out.read_bytes()
+    assert data.index(b"moov") < data.index(b"mdat")
