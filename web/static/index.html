@@ -5,111 +5,434 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SubFa: Persian subtitles from any video</title>
 <style>
-  :root { --ink:#14231c; --muted:#4c5f55; --line:#cfe0d6; --brand:#047857; --bg:#f4f8f5; --card:#ffffff; }
+  :root {
+    --stage:#0D1218; --stage-chip:#1C2631; --stage-track:#2A3542; --on-stage-2:#A7B3C0; --chip-text:#D8E0E8;
+    --paper:#F2F4F6; --surface:#FFFFFF; --ink:#182028; --muted:#55606C; --hairline:#D8DEE4; --field:#8B96A1;
+    --amber:#F2B705; --amber-text:#8A6100; --tint:#FFF6DE; --error:#B42318;
+  }
   * { box-sizing: border-box; }
-  body { margin:0; font-family: Vazirmatn, Tahoma, system-ui, sans-serif; background:var(--bg); color:var(--ink); }
-  main { max-width: 640px; margin: 0 auto; padding: 20px 16px 48px; }
-  header { display:flex; justify-content:space-between; align-items:center; }
-  h1 { font-size: 26px; margin: 8px 0 4px; }
-  p.lead { color: var(--muted); margin: 0 0 18px; line-height: 1.8; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; }
-  #drop { border:2px dashed var(--line); border-radius:12px; padding:26px 12px; text-align:center; cursor:pointer; color:var(--muted); }
-  #drop.over { border-color: var(--brand); color: var(--brand); }
-  #drop strong { display:block; font-size:17px; color:var(--ink); margin-bottom:6px; }
-  .or { text-align:center; color:var(--muted); margin:12px 0 6px; font-size:13px; }
-  label { display:block; font-size:14px; margin:12px 0 6px; }
-  input[type=url], select { width:100%; padding:11px; border:1px solid var(--line); border-radius:10px; font:inherit; background:#fff; }
-  .row { display:flex; gap:16px; flex-wrap:wrap; margin-top:6px; }
-  .check { display:flex; align-items:center; gap:8px; font-size:14px; min-height:44px; }
-  .check input { width:20px; height:20px; }
+  body { margin:0; font-family: Vazirmatn, Tahoma, system-ui, sans-serif; background:var(--paper); color:var(--ink); }
   button { font:inherit; cursor:pointer; }
-  #langBtn { background:none; border:1px solid var(--line); border-radius:999px; padding:8px 14px; min-height:44px; }
-  #go { width:100%; margin-top:18px; background:var(--brand); color:#fff; border:0; border-radius:12px; padding:14px; font-size:16px; min-height:52px; }
-  #go:disabled { opacity:.55; }
-  #status { margin-top:16px; font-size:14px; line-height:1.9; }
-  #bar { height:8px; background:var(--line); border-radius:99px; overflow:hidden; display:none; }
-  #bar i { display:block; height:100%; width:0; background:var(--brand); transition:width .4s; }
-  #links a { display:block; margin-top:8px; color:var(--brand); }
-  .err { color:#b42318; }
-  footer { color:var(--muted); font-size:13px; margin-top:18px; line-height:1.9; }
+  :focus-visible { outline:2px solid var(--amber-text); outline-offset:2px; }
+  @media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }
+
+  .topbar { background:var(--surface); border-bottom:1px solid var(--hairline); }
+  .topbar-in { max-width:1344px; margin:0 auto; padding:10px 48px; display:flex; justify-content:space-between; align-items:center; }
+  .brand { display:flex; align-items:center; gap:10px; font-weight:800; font-size:19px; }
+  .mark { width:34px; height:34px; border-radius:8px; background:var(--stage); display:flex; flex-direction:column; justify-content:center; gap:3px; padding:0 7px; flex:none; }
+  .mark i { display:block; height:3px; border-radius:2px; background:#fff; }
+  .mark i:last-child { background:var(--amber); width:60%; }
+  #langBtn { background:var(--surface); border:1px solid var(--field); border-radius:999px; padding:8px 18px; min-height:44px; font-size:14px; }
+
+  .wrap { max-width:1344px; margin:0 auto; padding:28px 48px 44px; }
+  h1 { font-size:29px; font-weight:800; margin:6px 0 8px; line-height:1.5; }
+  p.lead { color:var(--muted); margin:0 0 24px; line-height:1.9; font-size:14.5px; max-width:900px; }
+
+  .grid { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(0,1fr); gap:40px; align-items:start; }
+  .panel { background:var(--surface); border:1px solid var(--hairline); border-radius:12px; }
+
+  /* Stage */
+  .stage { position:relative; background:var(--stage); border-radius:16px; aspect-ratio:16/9; overflow:hidden; color:#fff; }
+  .stage video { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:var(--stage); }
+  .stage .veil { position:absolute; inset:0; display:flex; flex-direction:column; }
+  .stage.dragover { box-shadow: inset 0 0 0 2px var(--amber); }
+  .chips { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; padding:14px; }
+  .chips .grp { display:flex; gap:8px; flex-wrap:wrap; min-width:0; }
+  .chip { background:var(--stage-chip); color:var(--chip-text); border-radius:999px; padding:5px 12px; font-size:12.5px; line-height:1.6; max-width:340px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  button.chip { border:0; font-size:12.5px; }
+  .chip.ltr, .ltr { direction:ltr; unicode-bidi:isolate; }
+  .empty-hint { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; text-align:center; padding:16px; }
+  .empty-box { border:2px dashed var(--stage-track); border-radius:12px; padding:26px 34px; display:flex; flex-direction:column; gap:6px; align-items:center; }
+  .empty-box strong { font-size:17px; }
+  .empty-box span { color:var(--on-stage-2); font-size:13px; }
+  .playdisc { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:64px; height:64px; border-radius:50%; border:1px solid rgba(255,255,255,.35); background:rgba(255,255,255,.22); display:none; align-items:center; justify-content:center; padding:0; }
+  .playdisc svg { display:block; }
+  .stage.has-video .playdisc { display:flex; }
+  .stage.playing .playdisc { opacity:0; }
+  .stage.playing:hover .playdisc { opacity:1; }
+  .capview { position:absolute; left:0; right:0; bottom:26px; text-align:center; padding:0 24px; pointer-events:none; display:none; }
+  .stage.has-media .capview, .stage.has-link .capview { display:block; }
+  .capview .l1 { font-size:21px; font-weight:700; line-height:1.9; text-shadow:0 1px 3px rgba(0,0,0,.6); }
+  .capview .l2 { font-size:21px; font-weight:700; line-height:1.9; text-shadow:0 1px 3px rgba(0,0,0,.6); }
+  .capview .en { font-size:15px; font-weight:500; color:var(--chip-text); line-height:1.7; text-shadow:0 1px 3px rgba(0,0,0,.6); }
+  .capview .ambar { width:72px; height:4px; border-radius:2px; background:var(--amber); margin:8px auto 0; display:none; }
+  .capview.reels .ambar { display:block; }
+  .capview.reels .l2 { display:none; }
+  .scrub { position:absolute; left:14px; right:14px; bottom:12px; height:5px; border-radius:99px; background:var(--stage-track); cursor:pointer; }
+  .scrub i { display:block; height:100%; width:0; border-radius:99px; background:var(--amber); transition:width .25s linear; }
+  .stage-meta { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:12px; min-height:28px; flex-wrap:wrap; }
+  .srcnote { display:none; align-items:center; gap:7px; font-size:13.5px; color:var(--muted); }
+  .srcnote.show { display:flex; }
+  .srcnote .ck { width:20px; height:20px; border-radius:50%; background:var(--amber); display:inline-flex; align-items:center; justify-content:center; flex:none; }
+  .stylechip { border:1px solid var(--hairline); background:var(--surface); border-radius:999px; padding:4px 14px; font-size:13px; color:var(--ink); }
+  #status { margin-top:10px; font-size:14px; line-height:1.9; min-height:27px; }
+  #status .err, .err { color:var(--error); }
+
+  /* Stepper */
+  .stepper { list-style:none; margin:26px 0 0; padding:0; display:flex; }
+  .stepper li { flex:1; text-align:center; position:relative; }
+  .stepper .track { position:absolute; top:13px; inset-inline-start:-50%; width:100%; height:3px; background:var(--hairline); border-radius:99px; overflow:hidden; }
+  .stepper li:first-child .track { display:none; }
+  .stepper .track i { display:block; height:100%; width:0; background:var(--amber); }
+  .stepper li.done .track i, .stepper li.active .track i { width:100%; }
+  .stepper .node { position:relative; width:27px; height:27px; border-radius:50%; background:var(--surface); border:2px solid var(--hairline); margin:0 auto; display:flex; align-items:center; justify-content:center; color:var(--ink); }
+  .stepper li.done .node { background:var(--amber); border-color:var(--amber); }
+  .stepper li.active .node { border-color:var(--amber-text); }
+  .stepper .node svg { display:none; }
+  .stepper li.done .node svg { display:block; }
+  .stepper .lab { display:block; margin-top:8px; font-size:13.5px; color:var(--muted); }
+  .stepper li.active .lab { color:var(--amber-text); font-weight:700; }
+
+  /* Results */
+  #results { margin-top:26px; padding:18px 20px; display:none; }
+  #results.show { display:block; }
+  #results h2 { font-size:15.5px; margin:0 0 4px; }
+  #results .reportline { color:var(--muted); font-size:13px; margin:0 0 8px; line-height:1.9; }
+  #results .reportline a { color:var(--muted); }
+  .dlrow { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:9px 0; border-top:1px solid var(--hairline); }
+  .dlrow .kind { display:flex; align-items:center; gap:10px; font-size:14.5px; font-weight:500; }
+  .ftag { background:var(--paper); border:1px solid var(--hairline); color:var(--muted); border-radius:6px; font-size:11.5px; padding:1px 8px; direction:ltr; }
+  .dlbtn { display:inline-flex; align-items:center; gap:8px; border:1px solid var(--field); background:var(--surface); color:var(--ink); border-radius:8px; padding:9px 18px; min-height:44px; font-size:14px; text-decoration:none; }
+  .dlbtn.hero { background:var(--amber); border-color:var(--amber); font-weight:700; }
+  .editlink { display:block; text-align:center; margin-top:14px; color:var(--amber-text); font-weight:700; font-size:14.5px; text-decoration:none; }
+
+  /* Settings rail */
+  .rail { padding:20px; }
+  .rail h2.rail-title { display:none; font-size:15.5px; margin:0 0 14px; }
+  .rail label.f { display:block; font-size:13.5px; font-weight:500; margin:16px 0 7px; }
+  .rail label.f:first-of-type { margin-top:0; }
+  .rail input[type=url] { width:100%; padding:11px; border:1px solid var(--field); border-radius:10px; font:inherit; background:#fff; min-height:48px; }
+  .rail select { width:100%; padding:11px; border:1px solid var(--field); border-radius:10px; font:inherit; background:#fff; min-height:48px; }
+  .ordrop { color:var(--muted); font-size:12.5px; margin-top:7px; }
+  .divider { border-top:1px solid var(--hairline); margin:18px 0 2px; }
+  .seg { display:flex; border:1px solid var(--field); border-radius:10px; overflow:hidden; }
+  .seg button { flex:1; border:0; background:var(--surface); padding:11px; min-height:48px; font-size:14.5px; }
+  .seg button[aria-pressed="true"] { background:var(--ink); color:#fff; font-weight:700; }
+  .styles { display:flex; gap:10px; }
+  .style-card { flex:1; border:1px solid var(--hairline); background:var(--surface); border-radius:10px; padding:10px 6px 9px; position:relative; display:flex; flex-direction:column; align-items:center; gap:8px; min-height:44px; }
+  .style-card[aria-pressed="true"] { border-color:var(--amber-text); box-shadow: inset 0 0 0 1px var(--amber-text); }
+  .style-card .tick { position:absolute; top:-9px; inset-inline-end:-7px; width:20px; height:20px; border-radius:50%; background:var(--amber); display:none; align-items:center; justify-content:center; }
+  .style-card[aria-pressed="true"] .tick { display:flex; }
+  .style-card .slabel { font-size:13px; line-height:1.6; text-align:center; }
+  .mini { background:var(--stage); border-radius:6px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; color:#fff; }
+  .mini.wide { width:74px; height:44px; }
+  .mini.tall { width:30px; height:52px; }
+  .mini span { font-size:8px; line-height:1.5; }
+  .mini span.en { color:var(--on-stage-2); font-size:7.5px; }
+  .mini .ambar { width:20px; height:3px; border-radius:2px; background:var(--amber); margin-top:2px; }
+  .check { display:flex; align-items:center; gap:10px; font-size:14.5px; min-height:44px; cursor:pointer; }
+  .check input { appearance:none; -webkit-appearance:none; width:22px; height:22px; flex:none; border:1.5px solid var(--field); border-radius:6px; background:#fff; margin:0; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; }
+  .check input:checked { background:var(--amber); border-color:var(--amber); }
+  .check input:checked::after { content:"✓"; color:var(--ink); font-size:15px; font-weight:700; line-height:1; }
+  #go { width:100%; margin-top:16px; background:var(--amber); color:var(--ink); border:0; border-radius:10px; padding:14px; font-size:16px; font-weight:700; min-height:52px; }
+  #go:disabled { opacity:.55; cursor:default; }
+  .privacy { color:var(--muted); font-size:12.5px; text-align:center; margin-top:12px; line-height:1.9; }
+  footer { color:var(--muted); font-size:13px; text-align:center; margin-top:26px; line-height:1.9; }
+
+  @media (max-width: 900px) {
+    .topbar-in { padding:10px 20px; }
+    .wrap { padding:20px 20px 40px; }
+    h1 { font-size:23px; }
+    .grid { grid-template-columns:1fr; gap:22px; }
+    .col-main { order:1; } .col-rail { order:2; }
+    .rail h2.rail-title { display:block; }
+    .capview .l1, .capview .l2 { font-size:14.5px; }
+    .capview .en { font-size:12px; }
+    .capview { bottom:22px; padding:0 12px; }
+    .chip { max-width:200px; }
+  }
 </style>
 </head>
 <body>
-<main>
-  <header>
-    <div style="font-weight:800; font-size:19px;">SubFa</div>
+<div class="topbar">
+  <div class="topbar-in">
+    <div class="brand"><span class="mark" aria-hidden="true"><i></i><i></i><i></i></span><span>SubFa</span></div>
     <button id="langBtn" type="button">English</button>
-  </header>
+  </div>
+</div>
+<main class="wrap">
   <h1 data-i18n="title">زیرنویس فارسی از هر ویدیو</h1>
   <p class="lead" data-i18n="lead">فایل ویدیو یا صدا را بفرست، یا لینک ویدیو را بچسبان. زیرنویس فارسی، زیرنویس دوزبانه و متن کامل را تحویل بگیر. فایل‌ها همین جا پردازش و پاک می‌شوند.</p>
-  <form id="form" class="card">
-    <div id="drop" role="button" tabindex="0">
-      <strong data-i18n="dropTitle">فایل را اینجا رها کن</strong>
-      <span data-i18n="dropSub">یا برای انتخاب فایل کلیک کن (ویدیو یا صدا)</span>
-      <div id="fileName"></div>
+  <form id="form">
+    <div class="grid">
+      <div class="col-main">
+        <div id="drop" class="stage" role="button" tabindex="0" aria-label="Drop zone">
+          <video id="preview" playsinline preload="metadata"></video>
+          <div class="veil">
+            <div class="chips">
+              <div class="grp">
+                <button type="button" class="chip ltr" id="nameChip" style="display:none"></button>
+                <span class="chip ltr" id="sizeChip" style="display:none"></span>
+              </div>
+              <span class="chip ltr" id="durChip" style="display:none"></span>
+            </div>
+            <div class="empty-hint" id="emptyHint">
+              <div class="empty-box">
+                <strong data-i18n="dropTitle">فایل را اینجا رها کن</strong>
+                <span data-i18n="dropSub">یا برای انتخاب فایل کلیک کن (ویدیو یا صدا)</span>
+              </div>
+            </div>
+          </div>
+          <button type="button" class="playdisc" id="playBtn" aria-label="Play">
+            <svg id="playIco" width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="#fff"/></svg>
+            <svg id="pauseIco" width="24" height="24" viewBox="0 0 24 24" style="display:none" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z" fill="#fff"/></svg>
+          </button>
+          <div class="capview" id="capView">
+            <div class="l1" id="capL1"></div>
+            <div class="l2" id="capL2"></div>
+            <div class="en" id="capEn" dir="ltr" style="display:none"></div>
+            <div class="ambar"></div>
+          </div>
+          <div class="scrub" id="scrub"><i id="scrubFill"></i></div>
+        </div>
+        <input type="file" id="file" accept="video/*,audio/*,.mkv,.srt" hidden>
+        <div class="stage-meta">
+          <div class="srcnote" id="srcNote">
+            <span class="ck" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24"><path d="M4 12.5l5 5L20 6.5" fill="none" stroke="#182028" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <span id="srcNoteText"></span>
+          </div>
+          <span class="stylechip" id="styleChip"></span>
+        </div>
+        <div id="status" role="status"></div>
+        <ol class="stepper" id="stepper">
+          <li data-step="0"><span class="track"><i></i></span><span class="node"><svg width="13" height="13" viewBox="0 0 24 24"><path d="M4 12.5l5 5L20 6.5" fill="none" stroke="#182028" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="lab" data-i18n="step1">دریافت فایل</span></li>
+          <li data-step="1"><span class="track"><i></i></span><span class="node"><svg width="13" height="13" viewBox="0 0 24 24"><path d="M4 12.5l5 5L20 6.5" fill="none" stroke="#182028" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="lab" data-i18n="step2">پیاده‌سازی صدا</span></li>
+          <li data-step="2"><span class="track"><i></i></span><span class="node"><svg width="13" height="13" viewBox="0 0 24 24"><path d="M4 12.5l5 5L20 6.5" fill="none" stroke="#182028" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="lab" data-i18n="step3">ترجمه</span></li>
+          <li data-step="3"><span class="track"><i></i></span><span class="node"><svg width="13" height="13" viewBox="0 0 24 24"><path d="M4 12.5l5 5L20 6.5" fill="none" stroke="#182028" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="lab" data-i18n="step4">ساخت ویدیو</span></li>
+        </ol>
+        <section id="results" class="panel" aria-live="polite">
+          <h2 data-i18n="resultsTitle">فایل‌های آمادهٔ دانلود</h2>
+          <p class="reportline" id="reportLine"></p>
+          <div id="rows"></div>
+          <a class="editlink" id="editLink" href="#" data-i18n="editLink">ویرایش زیرنویس‌ها</a>
+        </section>
+      </div>
+      <div class="col-rail">
+        <div class="panel rail">
+          <h2 class="rail-title" data-i18n="newJob">کار تازه</h2>
+          <label class="f" for="url" data-i18n="urlLabel">لینک ویدیو</label>
+          <input type="url" id="url" placeholder="https://www.youtube.com/watch?v=..." dir="ltr">
+          <div class="ordrop" data-i18n="orDrop">یا فایل را روی صحنه رها کن</div>
+          <div class="divider"></div>
+          <label class="f" id="targetLabel" data-i18n="targetLabel">زبان زیرنویس</label>
+          <div class="seg" role="group" aria-labelledby="targetLabel">
+            <button type="button" id="segFa" aria-pressed="true" data-i18n="faOpt">فارسی</button>
+            <button type="button" id="segEn" aria-pressed="false" data-i18n="enOpt">انگلیسی</button>
+          </div>
+          <input type="hidden" id="target" value="fa">
+          <label class="f" for="glossary" data-i18n="glossaryLabel">واژه‌نامه تخصصی (اختیاری)</label>
+          <select id="glossary">
+            <option value="" data-i18n="noneOpt">هیچ‌کدام</option>
+            <option value="general" data-i18n="generalOpt">عمومی</option>
+            <option value="programming" data-i18n="programmingOpt">برنامه‌نویسی</option>
+            <option value="gaming" data-i18n="gamingOpt">بازی</option>
+          </select>
+          <label class="f" id="styleLabel" data-i18n="styleLabel">سبک زیرنویس روی ویدیو</label>
+          <div class="styles" role="group" aria-labelledby="styleLabel">
+            <button type="button" class="style-card" data-style="cinema" aria-pressed="true">
+              <span class="tick" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24"><path d="M4 12.5l5 5L20 6.5" fill="none" stroke="#182028" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+              <span class="mini wide"><span data-i18n="thumbLine">متن زیرنویس</span><span data-i18n="thumbSub">نمونهٔ سبک</span></span>
+              <span class="slabel" data-i18n="cinemaOpt">سینمایی</span>
+            </button>
+            <button type="button" class="style-card" data-style="reels" aria-pressed="false">
+              <span class="tick" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24"><path d="M4 12.5l5 5L20 6.5" fill="none" stroke="#182028" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+              <span class="mini tall"><span data-i18n="thumbLine">متن زیرنویس</span><span class="ambar"></span></span>
+              <span class="slabel" data-i18n="reelsOpt">ریلز عمودی (9:16)</span>
+            </button>
+            <button type="button" class="style-card" data-style="learning" aria-pressed="false">
+              <span class="tick" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24"><path d="M4 12.5l5 5L20 6.5" fill="none" stroke="#182028" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+              <span class="mini wide"><span data-i18n="thumbLine">متن زیرنویس</span><span class="en">Subtitle text</span></span>
+              <span class="slabel" data-i18n="learningOpt">آموزشی دوزبانه</span>
+            </button>
+          </div>
+          <input type="hidden" id="style" value="cinema">
+          <div style="margin-top:10px">
+            <label class="check"><input type="checkbox" id="burn" checked> <span data-i18n="burnOpt">ویدیوی زیرنویس‌دار هم بساز</span></label>
+            <label class="check"><input type="checkbox" id="bilingual"> <span data-i18n="bilingualOpt">زیرنویس دوزبانه روی ویدیو</span></label>
+          </div>
+          <button id="go" type="submit" data-i18n="go">ساخت زیرنویس</button>
+          <div class="privacy" data-i18n="privacyNote">فایل‌ها همین‌جا پردازش و بعد پاک می‌شوند.</div>
+        </div>
+      </div>
     </div>
-    <input type="file" id="file" accept="video/*,audio/*,.mkv,.srt" hidden>
-    <div class="or" data-i18n="or">یا</div>
-    <label for="url" data-i18n="urlLabel">لینک ویدیو (یوتیوب و سایت‌های دیگر)</label>
-    <input type="url" id="url" placeholder="https://www.youtube.com/watch?v=..." dir="ltr">
-    <label for="target" data-i18n="targetLabel">زبان زیرنویس</label>
-    <select id="target">
-      <option value="fa" data-i18n="faOpt">فارسی</option>
-      <option value="en">English</option>
-    </select>
-    <label for="glossary" data-i18n="glossaryLabel">واژه‌نامه تخصصی (اختیاری)</label>
-    <select id="glossary">
-      <option value="" data-i18n="noneOpt">هیچ‌کدام</option>
-      <option value="general">General / عمومی</option>
-      <option value="programming">Programming / برنامه‌نویسی</option>
-      <option value="gaming">Gaming / بازی</option>
-    </select>
-    <label for="style" data-i18n="styleLabel">سبک زیرنویس روی ویدیو</label>
-    <select id="style">
-      <option value="cinema" data-i18n="cinemaOpt">سینمایی</option>
-      <option value="reels" data-i18n="reelsOpt">ریلز عمودی (9:16)</option>
-      <option value="learning" data-i18n="learningOpt">آموزشی دوزبانه</option>
-    </select>
-    <div class="row">
-      <label class="check"><input type="checkbox" id="burn" checked> <span data-i18n="burnOpt">ویدیوی زیرنویس‌دار هم بساز</span></label>
-      <label class="check"><input type="checkbox" id="bilingual"> <span data-i18n="bilingualOpt">زیرنویس دوزبانه روی ویدیو</span></label>
-    </div>
-    <button id="go" type="submit" data-i18n="go">ساخت زیرنویس</button>
-    <div id="status"></div>
-    <div id="bar"><i></i></div>
-    <div id="links"></div>
   </form>
   <footer data-i18n="foot">سقف حجم و مدت در سرور تنظیم می‌شود و هنگام خطا دقیق گفته می‌شود. فقط محتوایی را دانلود یا زیرنویس کن که حق استفاده از آن را داری.</footer>
 </main>
 <script>
 const T = {
-  fa: { title:"زیرنویس فارسی از هر ویدیو", lead:"فایل ویدیو یا صدا را بفرست، یا لینک ویدیو را بچسبان. زیرنویس فارسی، زیرنویس دوزبانه و متن کامل را تحویل بگیر. فایل‌ها همین جا پردازش و پاک می‌شوند.", dropTitle:"فایل را اینجا رها کن", dropSub:"یا برای انتخاب فایل کلیک کن (ویدیو یا صدا)", or:"یا", urlLabel:"لینک ویدیو (یوتیوب و سایت‌های دیگر)", targetLabel:"زبان زیرنویس", faOpt:"فارسی", glossaryLabel:"واژه‌نامه تخصصی (اختیاری)", noneOpt:"هیچ‌کدام", styleLabel:"سبک زیرنویس روی ویدیو", cinemaOpt:"سینمایی", reelsOpt:"ریلز عمودی (9:16)", learningOpt:"آموزشی دوزبانه", burnOpt:"ویدیوی زیرنویس‌دار هم بساز", bilingualOpt:"زیرنویس دوزبانه روی ویدیو", go:"ساخت زیرنویس", foot:"سقف حجم و مدت در سرور تنظیم می‌شود و هنگام خطا دقیق گفته می‌شود. فقط محتوایی را دانلود یا زیرنویس کن که حق استفاده از آن را داری.", working:"در حال ساخت زیرنویس:", done:"تمام شد. فایل‌ها:", captionsNote:"منبع متن: زیرنویس منتشرشده خود ویدیو", whisperNote:"منبع متن: پیاده‌سازی با Whisper", errPrefix:"خطا: ", editLink:"ویرایش زیرنویس‌ها", reportLine:"گزارش کیفیت: {c} زیرنویس، {p}٪ سریع‌تر از حد خواندن، واژه‌نامه: {g}", kinds:{srt:"زیرنویس", bilingual:"زیرنویس دوزبانه", transcript:"متن کامل", burned:"ویدیوی زیرنویس‌دار", report:"گزارش کیفیت"} },
-  en: { title:"Persian subtitles from any video", lead:"Send a video or audio file, or paste a video link. Get Persian subtitles, a bilingual subtitle file and a full transcript back. Files are processed here and deleted.", dropTitle:"Drop a file here", dropSub:"or click to choose a file (video or audio)", or:"or", urlLabel:"Video link (YouTube and other sites)", targetLabel:"Subtitle language", faOpt:"Persian", glossaryLabel:"Glossary (optional)", noneOpt:"None", styleLabel:"Burn-in style", cinemaOpt:"Cinema", reelsOpt:"Reels (vertical 9:16)", learningOpt:"Learning (bilingual)", burnOpt:"Also make the subtitled video", bilingualOpt:"Bilingual subtitles on the video", go:"Make subtitles", foot:"Size and duration caps are set on the server and reported exactly when hit. Only download or subtitle content you have the right to use.", working:"Making subtitles:", done:"Done. Files:", captionsNote:"Transcript source: the video's own published captions", whisperNote:"Transcript source: Whisper transcription", errPrefix:"Error: ", editLink:"Edit subtitles", reportLine:"Quality: {c} cues, {p}% over the reading limit, glossary applied: {g}", kinds:{srt:"Subtitles", bilingual:"Bilingual subtitles", transcript:"Transcript", burned:"Subtitled video", report:"Quality report"} }
+  fa: { docTitle:"SubFa: زیرنویس فارسی از هر ویدیو", title:"زیرنویس فارسی از هر ویدیو", lead:"فایل ویدیو یا صدا را بفرست، یا لینک ویدیو را بچسبان. زیرنویس فارسی، زیرنویس دوزبانه و متن کامل را تحویل بگیر. فایل‌ها همین جا پردازش و پاک می‌شوند.", dropTitle:"فایل را اینجا رها کن", dropSub:"یا برای انتخاب فایل کلیک کن (ویدیو یا صدا)", urlLabel:"لینک ویدیو", orDrop:"یا فایل را روی صحنه رها کن", targetLabel:"زبان زیرنویس", faOpt:"فارسی", enOpt:"انگلیسی", glossaryLabel:"واژه‌نامه تخصصی (اختیاری)", noneOpt:"هیچ‌کدام", generalOpt:"عمومی", programmingOpt:"برنامه‌نویسی", gamingOpt:"بازی", styleLabel:"سبک زیرنویس روی ویدیو", cinemaOpt:"سینمایی", reelsOpt:"ریلز عمودی (9:16)", learningOpt:"آموزشی دوزبانه", thumbLine:"متن زیرنویس", thumbSub:"نمونهٔ سبک", burnOpt:"ویدیوی زیرنویس‌دار هم بساز", bilingualOpt:"زیرنویس دوزبانه روی ویدیو", go:"ساخت زیرنویس", goAgain:"ساخت زیرنویس تازه", privacyNote:"فایل‌ها همین‌جا پردازش و بعد پاک می‌شوند.", newJob:"کار تازه", foot:"سقف حجم و مدت در سرور تنظیم می‌شود و هنگام خطا دقیق گفته می‌شود. فقط محتوایی را دانلود یا زیرنویس کن که حق استفاده از آن را داری.", resultsTitle:"فایل‌های آمادهٔ دانلود", editLink:"ویرایش زیرنویس‌ها", step1:"دریافت فایل", step2:"پیاده‌سازی صدا", step3:"ترجمه", step4:"ساخت ویدیو", working:"در حال ساخت زیرنویس:", done:"تمام شد.", captionsNote:"منبع متن: زیرنویس منتشرشدهٔ خود ویدیو", whisperNote:"منبع متن: پیاده‌سازی با Whisper", errPrefix:"خطا: ", reportLine:"گزارش کیفیت: {c} زیرنویس، {p}٪ سریع‌تر از حد خواندن، واژه‌نامه: {g}", styleChip:"سبک: {s}", play:"پخش ویدیو", pause:"توقف ویدیو", changeFile:"تغییر فایل", dl:"دانلود", sampleFa1:"امروز دربارهٔ ساختار جمله", sampleFa2:"در زبان انگلیسی صحبت می‌کنیم", sampleEn:"Today we talk about sentence structure in English", stageNames:{start:"دریافت فایل", download:"دریافت فایل", extract:"پیاده‌سازی صدا", captions:"پیاده‌سازی صدا", transcribe:"پیاده‌سازی صدا", translate:"ترجمه", write:"ساخت ویدیو", burn:"ساخت ویدیو", done:"ساخت ویدیو"}, kinds:{srt:"زیرنویس", bilingual:"زیرنویس دوزبانه", transcript:"متن کامل", burned:"ویدیوی زیرنویس‌دار", report:"گزارش کیفیت"}, srtFa:"زیرنویس فارسی", srtEn:"زیرنویس انگلیسی" },
+  en: { docTitle:"SubFa: Persian subtitles from any video", title:"Persian subtitles from any video", lead:"Send a video or audio file, or paste a video link. Get Persian subtitles, a bilingual subtitle file and a full transcript back. Files are processed here and deleted.", dropTitle:"Drop a file here", dropSub:"or click to choose a file (video or audio)", urlLabel:"Video link", orDrop:"or drop the file on the stage", targetLabel:"Subtitle language", faOpt:"Persian", enOpt:"English", glossaryLabel:"Glossary (optional)", noneOpt:"None", generalOpt:"General", programmingOpt:"Programming", gamingOpt:"Gaming", styleLabel:"Burn-in style", cinemaOpt:"Cinema", reelsOpt:"Reels (vertical 9:16)", learningOpt:"Learning (bilingual)", thumbLine:"Subtitle text", thumbSub:"Style sample", burnOpt:"Also make the subtitled video", bilingualOpt:"Bilingual subtitles on the video", go:"Make subtitles", goAgain:"Make new subtitles", privacyNote:"Files are processed here and deleted afterwards.", newJob:"New job", foot:"Size and duration caps are set on the server and reported exactly when hit. Only download or subtitle content you have the right to use.", resultsTitle:"Files ready to download", editLink:"Edit subtitles", step1:"Get file", step2:"Transcribe", step3:"Translate", step4:"Build video", working:"Making subtitles:", done:"Done.", captionsNote:"Transcript source: the video's own published captions", whisperNote:"Transcript source: Whisper transcription", errPrefix:"Error: ", reportLine:"Quality: {c} cues, {p}% over the reading limit, glossary applied: {g}", styleChip:"Style: {s}", play:"Play video", pause:"Pause video", changeFile:"Change file", dl:"Download", sampleFa1:"امروز دربارهٔ ساختار جمله", sampleFa2:"در زبان انگلیسی صحبت می‌کنیم", sampleEn:"Today we talk about sentence structure in English", stageNames:{start:"Get file", download:"Get file", extract:"Transcribe", captions:"Transcribe", transcribe:"Transcribe", translate:"Translate", write:"Build video", burn:"Build video", done:"Build video"}, kinds:{srt:"Subtitles", bilingual:"Bilingual subtitles", transcript:"Transcript", burned:"Subtitled video", report:"Quality report"}, srtFa:"Persian subtitles", srtEn:"English subtitles" }
 };
-let lang = "fa";
+let lang = localStorage.getItem("subfa-lang") || "fa";
 const $ = (s) => document.querySelector(s);
+const stage = $("#drop"), video = $("#preview"), fileInput = $("#file");
+
+function styleName() { return T[lang][$("#style").value + "Opt"]; }
+function renderStyleChip() { $("#styleChip").textContent = T[lang].styleChip.replace("{s}", styleName()); }
+
+function sampleCaption() {
+  const st = $("#style").value;
+  $("#capL1").textContent = T[lang].sampleFa1;
+  $("#capL2").textContent = T[lang].sampleFa2;
+  const en = $("#capEn");
+  if (st === "learning") { en.style.display = "block"; en.textContent = T[lang].sampleEn; }
+  else en.style.display = "none";
+  $("#capView").className = "capview" + (st === "reels" ? " reels" : "");
+}
+function refreshStage() {
+  const hasFile = fileInput.files && fileInput.files.length > 0;
+  const url = $("#url").value.trim();
+  stage.classList.toggle("has-video", hasFile);
+  stage.classList.toggle("has-media", hasFile || !!url);
+  stage.classList.toggle("has-link", !hasFile && !!url);
+  $("#emptyHint").style.display = (hasFile || url) ? "none" : "flex";
+  const nameChip = $("#nameChip"), sizeChip = $("#sizeChip"), durChip = $("#durChip");
+  if (hasFile) {
+    const f = fileInput.files[0];
+    nameChip.style.display = ""; sizeChip.style.display = "";
+    nameChip.textContent = f.name; nameChip.title = T[lang].changeFile;
+    sizeChip.textContent = (f.size / 1048576).toFixed(1) + " MB";
+    if (video.src) { video.style.display = ""; }
+  } else if (url) {
+    nameChip.style.display = ""; sizeChip.style.display = "none";
+    let host = url; try { host = new URL(url).hostname; } catch (e) {}
+    nameChip.textContent = host; nameChip.title = "";
+    video.style.display = "none"; durChip.style.display = "none";
+  } else {
+    nameChip.style.display = "none"; sizeChip.style.display = "none"; durChip.style.display = "none";
+    video.style.display = "none";
+  }
+  sampleCaption(); renderStyleChip();
+}
 function applyLang() {
   document.documentElement.lang = lang;
   document.documentElement.dir = lang === "fa" ? "rtl" : "ltr";
-  document.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = T[lang][el.dataset.i18n] || el.textContent; });
+  document.title = T[lang].docTitle;
+  document.querySelectorAll("[data-i18n]").forEach(el => { const v = T[lang][el.dataset.i18n]; if (v) el.textContent = v; });
   $("#langBtn").textContent = lang === "fa" ? "English" : "فارسی";
+  $("#playBtn").setAttribute("aria-label", video.paused ? T[lang].play : T[lang].pause);
+  refreshStage();
 }
-$("#langBtn").addEventListener("click", () => { lang = lang === "fa" ? "en" : "fa"; applyLang(); });
+$("#langBtn").addEventListener("click", () => { lang = lang === "fa" ? "en" : "fa"; localStorage.setItem("subfa-lang", lang); applyLang(); });
 
-const drop = $("#drop"), fileInput = $("#file");
-drop.addEventListener("click", () => fileInput.click());
-drop.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); } });
-["dragover","dragenter"].forEach(ev => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); }));
-["dragleave","drop"].forEach(ev => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
-drop.addEventListener("drop", (e) => { if (e.dataTransfer.files.length) { fileInput.files = e.dataTransfer.files; showName(); } });
-fileInput.addEventListener("change", showName);
-function showName() { $("#fileName").textContent = fileInput.files.length ? fileInput.files[0].name : ""; }
+/* Drop zone on the stage itself */
+stage.addEventListener("click", (e) => {
+  if (e.target.closest("#nameChip") || e.target.closest("#playBtn") || e.target.closest("#scrub")) return;
+  if (stage.classList.contains("has-video")) togglePlay();
+  else fileInput.click();
+});
+stage.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (stage.classList.contains("has-video")) togglePlay(); else fileInput.click(); }
+});
+["dragover","dragenter"].forEach(ev => stage.addEventListener(ev, (e) => { e.preventDefault(); stage.classList.add("dragover"); }));
+["dragleave","drop"].forEach(ev => stage.addEventListener(ev, (e) => { e.preventDefault(); stage.classList.remove("dragover"); }));
+stage.addEventListener("drop", (e) => { if (e.dataTransfer.files.length) { fileInput.files = e.dataTransfer.files; onFileChosen(); } });
+fileInput.addEventListener("change", onFileChosen);
+$("#nameChip").addEventListener("click", () => fileInput.click());
+
+let objUrl = null;
+function onFileChosen() {
+  if (objUrl) { URL.revokeObjectURL(objUrl); objUrl = null; }
+  video.removeAttribute("src"); video.load();
+  if (fileInput.files.length) {
+    objUrl = URL.createObjectURL(fileInput.files[0]);
+    video.src = objUrl;
+  }
+  refreshStage();
+}
+function fmtDur(s) { if (!isFinite(s)) return ""; const m = Math.floor(s / 60), r = Math.floor(s % 60); return m + ":" + String(r).padStart(2, "0"); }
+video.addEventListener("loadedmetadata", () => { const d = $("#durChip"); d.textContent = fmtDur(video.duration); d.style.display = video.duration ? "" : "none"; });
+video.addEventListener("timeupdate", () => { if (video.duration) $("#scrubFill").style.width = (video.currentTime / video.duration * 100) + "%"; });
+video.addEventListener("play", () => { stage.classList.add("playing"); $("#playIco").style.display = "none"; $("#pauseIco").style.display = ""; $("#playBtn").setAttribute("aria-label", T[lang].pause); });
+video.addEventListener("pause", () => { stage.classList.remove("playing"); $("#playIco").style.display = ""; $("#pauseIco").style.display = "none"; $("#playBtn").setAttribute("aria-label", T[lang].play); });
+function togglePlay() { if (video.paused) video.play(); else video.pause(); }
+$("#playBtn").addEventListener("click", togglePlay);
+$("#scrub").addEventListener("click", (e) => {
+  if (!video.duration) return;
+  const r = e.currentTarget.getBoundingClientRect();
+  const x = Math.min(Math.max(e.clientX - r.left, 0), r.width);
+  video.currentTime = video.duration * (x / r.width);
+});
+$("#url").addEventListener("input", refreshStage);
+
+/* Segmented subtitle language */
+function setTarget(v) {
+  $("#target").value = v;
+  $("#segFa").setAttribute("aria-pressed", v === "fa" ? "true" : "false");
+  $("#segEn").setAttribute("aria-pressed", v === "en" ? "true" : "false");
+}
+$("#segFa").addEventListener("click", () => setTarget("fa"));
+$("#segEn").addEventListener("click", () => setTarget("en"));
+/* Style cards */
+document.querySelectorAll(".style-card").forEach(card => {
+  card.addEventListener("click", () => {
+    document.querySelectorAll(".style-card").forEach(c => c.setAttribute("aria-pressed", "false"));
+    card.setAttribute("aria-pressed", "true");
+    $("#style").value = card.dataset.style;
+    sampleCaption(); renderStyleChip();
+  });
+});
+
+/* Stepper */
+const STAGE_STEP = { start:0, download:0, extract:1, captions:1, transcribe:1, translate:2, write:3, burn:3, done:4 };
+function setStepper(stageName, doneAll) {
+  const active = doneAll ? 4 : (STAGE_STEP[stageName] ?? 0);
+  document.querySelectorAll("#stepper li").forEach(li => {
+    const i = Number(li.dataset.step);
+    li.classList.toggle("done", doneAll || i < active);
+    li.classList.toggle("active", !doneAll && i === active);
+  });
+}
+
+/* Results */
+const ORDER = ["srt", "bilingual", "transcript", "burned"];
+const FTAG = { srt:"SRT", bilingual:"SRT", transcript:"TXT", burned:"MP4", report:"TXT" };
+function dlSvg() { return '<svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 20h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
+function renderResults(id, job) {
+  const rows = $("#rows"); rows.innerHTML = "";
+  const keys = ORDER.filter(k => job.outputs.includes(k)).concat(job.outputs.filter(k => !ORDER.includes(k) && k !== "report"));
+  keys.forEach(k => {
+    const row = document.createElement("div"); row.className = "dlrow";
+    let label = T[lang].kinds[k] || k;
+    if (k === "srt") label = $("#target").value === "en" ? T[lang].srtEn : T[lang].srtFa;
+    row.innerHTML = '<span class="kind">' + label + ' <span class="ftag">' + (FTAG[k] || "") + "</span></span>" +
+      '<a class="dlbtn' + (k === "burned" ? " hero" : "") + '" href="/jobs/' + id + "/files/" + k + '">' + dlSvg() + "<span>" + T[lang].dl + "</span></a>";
+    rows.appendChild(row);
+  });
+  const rl = $("#reportLine");
+  if (job.report) {
+    const line = T[lang].reportLine.replace("{c}", job.report.cue_count).replace("{p}", job.report.over_speed_percent).replace("{g}", job.report.glossary_applied);
+    rl.innerHTML = job.outputs.includes("report")
+      ? '<a href="/jobs/' + id + '/files/report">' + line + "</a>" : line;
+    rl.style.display = "";
+  } else rl.style.display = "none";
+  $("#editLink").href = "/jobs/" + id + "/edit";
+  $("#results").classList.add("show");
+}
+async function showResultCaption(id, job) {
+  try {
+    const kind = job.outputs.includes("bilingual") && $("#style").value === "learning" ? "bilingual" : "srt";
+    if (!job.outputs.includes(kind)) return;
+    const text = await (await fetch("/jobs/" + id + "/files/" + kind)).text();
+    const block = text.split(/\n\s*\n/)[0] || "";
+    const lines = block.split("\n").filter(l => l && !/^\d+$/.test(l) && !l.includes("-->"));
+    if (!lines.length) return;
+    $("#capL1").textContent = lines[0] || "";
+    $("#capL2").textContent = $("#style").value === "learning" ? "" : (lines[1] || "");
+    const en = $("#capEn");
+    if ($("#style").value === "learning" && lines[1]) { en.style.display = "block"; en.textContent = lines[1]; }
+    stage.classList.add("has-media");
+    if (job.title) { const nc = $("#nameChip"); nc.style.display = ""; nc.textContent = job.title; }
+  } catch (e) { /* preview is a bonus; downloads are the deliverable */ }
+}
 
 $("#form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const status = $("#status"), links = $("#links"), bar = $("#bar"), fill = bar.querySelector("i");
-  status.textContent = ""; links.innerHTML = ""; bar.style.display = "block"; fill.style.width = "5%";
-  $("#go").disabled = true;
+  const status = $("#status");
+  status.textContent = ""; $("#results").classList.remove("show");
+  $("#srcNote").classList.remove("show");
+  setStepper("start", false);
+  const go = $("#go"); go.disabled = true; go.textContent = T[lang].go;
   const fd = new FormData();
   if (fileInput.files.length) fd.append("file", fileInput.files[0]);
   fd.append("url", $("#url").value.trim());
@@ -124,25 +447,27 @@ $("#form").addEventListener("submit", async (e) => {
     const id = created.job_id;
     const poll = async () => {
       const job = await (await fetch("/jobs/" + id)).json();
-      fill.style.width = Math.round((job.fraction || 0) * 100) + "%";
-      status.textContent = T[lang].working + " " + (job.stage || "") + " (" + Math.round((job.fraction || 0) * 100) + "%)";
+      const pct = Math.round((job.fraction || 0) * 100);
+      setStepper(job.stage || "start", false);
+      status.textContent = T[lang].working + " " + (T[lang].stageNames[job.stage] || job.stage || "") + " (" + pct + "%)";
       if (job.status === "running") { setTimeout(poll, 2000); return; }
-      $("#go").disabled = false;
+      go.disabled = false;
       if (job.status === "error") { status.innerHTML = '<span class="err">' + T[lang].errPrefix + job.error + "</span>"; return; }
-      status.textContent = T[lang].done + " " + (job.path_used === "captions" ? T[lang].captionsNote : T[lang].whisperNote);
-      links.innerHTML = job.outputs.map(k => '<a href="/jobs/' + id + '/files/' + k + '">' + (T[lang].kinds[k] || k) + "</a>").join("");
-      if (job.report) {
-        const line = T[lang].reportLine.replace("{c}", job.report.cue_count).replace("{p}", job.report.over_speed_percent).replace("{g}", job.report.glossary_applied);
-        links.innerHTML += '<div style="margin-top:10px">' + line + "</div>";
-      }
-      links.innerHTML += '<a href="/jobs/' + id + '/edit" style="font-weight:700">' + T[lang].editLink + "</a>";
+      setStepper("done", true);
+      status.textContent = T[lang].done;
+      $("#srcNoteText").textContent = job.path_used === "captions" ? T[lang].captionsNote : T[lang].whisperNote;
+      $("#srcNote").classList.add("show");
+      renderResults(id, job);
+      showResultCaption(id, job);
+      go.textContent = T[lang].goAgain;
     };
     poll();
   } catch (err) {
-    $("#go").disabled = false;
+    go.disabled = false;
     status.innerHTML = '<span class="err">' + T[lang].errPrefix + err.message + "</span>";
   }
 });
+setTarget("fa");
 applyLang();
 </script>
 </body>

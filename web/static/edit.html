@@ -3,96 +3,197 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SubFa: ویرایش زیرنویس / Edit subtitles</title>
+<title>SubFa: ویرایش زیرنویس</title>
 <style>
-  :root { --ink:#14231c; --muted:#4c5f55; --line:#cfe0d6; --brand:#047857; --bg:#f4f8f5; }
+  :root {
+    --stage:#0D1218; --paper:#F2F4F6; --surface:#FFFFFF; --ink:#182028; --muted:#55606C;
+    --hairline:#D8DEE4; --field:#8B96A1; --amber:#F2B705; --amber-text:#8A6100; --tint:#FFF6DE; --error:#B42318;
+  }
   * { box-sizing: border-box; }
-  body { margin:0; font-family: Vazirmatn, Tahoma, system-ui, sans-serif; background:var(--bg); color:var(--ink); }
-  main { max-width: 760px; margin: 0 auto; padding: 20px 16px 48px; }
-  h1 { font-size: 22px; }
-  p { color: var(--muted); line-height: 1.9; }
-  table { width:100%; border-collapse: collapse; background:#fff; }
-  th, td { border:1px solid var(--line); padding:6px; vertical-align: top; }
-  th { font-size: 13px; color: var(--muted); }
-  input[type=number] { width: 92px; padding:8px; font:inherit; }
-  textarea { width:100%; min-height:44px; padding:8px; font:inherit; resize: vertical; }
-  .bar { display:flex; gap:10px; flex-wrap:wrap; margin:16px 0; }
-  button { font:inherit; cursor:pointer; border-radius:10px; padding:12px 18px; min-height:48px; border:1px solid var(--line); background:#fff; }
-  button.primary { background:var(--brand); color:#fff; border:0; }
-  select { padding:10px; font:inherit; border:1px solid var(--line); border-radius:10px; background:#fff; }
-  #msg { margin-top:12px; font-size:14px; }
-  a { color: var(--brand); }
+  body { margin:0; font-family: Vazirmatn, Tahoma, system-ui, sans-serif; background:var(--paper); color:var(--ink); }
+  button { font:inherit; cursor:pointer; }
+  :focus-visible { outline:2px solid var(--amber-text); outline-offset:2px; }
+  @media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }
+
+  .topbar { background:var(--surface); border-bottom:1px solid var(--hairline); }
+  .topbar-in { max-width:1344px; margin:0 auto; padding:10px 48px; display:flex; justify-content:space-between; align-items:center; }
+  .brand { display:flex; align-items:center; gap:10px; font-weight:800; font-size:19px; }
+  .mark { width:34px; height:34px; border-radius:8px; background:var(--stage); display:flex; flex-direction:column; justify-content:center; gap:3px; padding:0 7px; flex:none; }
+  .mark i { display:block; height:3px; border-radius:2px; background:#fff; }
+  .mark i:last-child { background:var(--amber); width:60%; }
+  #langBtn { background:var(--surface); border:1px solid var(--field); border-radius:999px; padding:8px 18px; min-height:44px; font-size:14px; }
+
+  .wrap { max-width:1344px; margin:0 auto; padding:28px 48px 44px; }
+  .panel { background:var(--surface); border:1px solid var(--hairline); border-radius:12px; }
+  .titlerow { display:flex; align-items:baseline; gap:16px; }
+  h1 { font-size:26px; font-weight:800; margin:6px 0 8px; }
+  .count { flex:1; text-align:center; color:var(--muted); font-size:13px; }
+  a.backlink { color:var(--amber-text); font-weight:700; font-size:14.5px; text-decoration:none; white-space:nowrap; }
+  p.intro { color:var(--muted); line-height:1.9; font-size:14.5px; margin:0 0 20px; }
+
+  .toolbar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; padding:14px 16px; }
+  .toolbar select { padding:10px; font:inherit; border:1px solid var(--field); border-radius:10px; background:#fff; min-height:48px; min-width:190px; }
+  .btn { border:1px solid var(--field); background:var(--surface); color:var(--ink); border-radius:10px; padding:12px 20px; min-height:48px; font-size:14.5px; }
+  .btn.primary { background:var(--amber); border-color:var(--amber); color:var(--ink); font-weight:700; }
+  #msg { margin:14px 2px 0; font-size:14px; line-height:1.9; min-height:27px; }
+  #msg.err, .err { color:var(--error); }
+  #msg a { color:var(--amber-text); font-weight:700; }
+
+  .colheads { display:grid; grid-template-columns:56px 150px 150px 1fr; gap:12px; padding:0 14px; margin:20px 0 8px; font-size:13px; color:var(--muted); }
+  .cue { display:grid; grid-template-columns:56px 150px 150px 1fr; gap:12px; align-items:start; background:var(--surface); border:1px solid var(--hairline); border-radius:10px; padding:10px 14px; margin-bottom:10px; position:relative; overflow:hidden; }
+  .cue::before { content:""; position:absolute; top:0; bottom:0; inset-inline-start:0; width:4px; background:var(--amber); display:none; }
+  .cue.active { background:var(--tint); border-color:var(--amber-text); }
+  .cue.active::before { display:block; }
+  .cue-num { font-weight:700; font-size:14.5px; padding-top:12px; text-align:center; }
+  .tf { display:block; }
+  .mini-label { display:none; font-size:12.5px; color:var(--muted); margin-bottom:5px; }
+  .cue input[type=number] { width:100%; padding:9px; font:inherit; border:1px solid var(--field); border-radius:8px; direction:ltr; text-align:center; min-height:44px; background:#fff; }
+  .cue textarea { width:100%; min-height:48px; padding:10px; font:inherit; border:1px solid var(--field); border-radius:8px; resize:vertical; line-height:1.8; background:#fff; }
+
+  .bottombar { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; padding:14px 16px; margin-top:18px; }
+  .bottombar .grp { display:flex; gap:10px; flex-wrap:wrap; }
+
+  @media (max-width: 900px) {
+    .topbar-in { padding:10px 20px; }
+    .wrap { padding:20px 20px 40px; }
+    h1 { font-size:22px; }
+    .titlerow { flex-wrap:wrap; }
+    .count { display:block; flex:1 1 100%; order:3; text-align:center; margin-top:2px; }
+    .toolbar select { flex:1 1 100%; }
+    .toolbar #save { order:2; flex:1; }
+    .toolbar #load { order:3; flex:1; }
+    .toolbar #reburn { order:4; flex:1 1 100%; }
+    .colheads { display:none; }
+    .cue { grid-template-columns:1fr 1fr; grid-template-areas:"num num" "start end" "text text"; }
+    .cue-num { grid-area:num; text-align:start; padding-top:0; }
+    .tf.start { grid-area:start; } .tf.end { grid-area:end; }
+    .cue textarea { grid-area:text; }
+    .mini-label { display:block; }
+    .bottombar { flex-direction:column; align-items:stretch; }
+    .bottombar .grp { display:flex; width:100%; }
+    .bottombar .btn { flex:1; }
+    .bottombar a.backlink { text-align:center; }
+  }
 </style>
 </head>
 <body>
-<main>
-  <h1>ویرایش زیرنویس / Edit subtitles</h1>
-  <p>متن هر زیرنویس را اصلاح کن، ذخیره کن، و بدون پیاده‌سازی دوباره، ویدیوی زیرنویس‌دار را از نو بساز یا فایل اصلاح‌شده را دانلود کن.<br>Fix any cue, save, and re-burn or re-download. No re-transcription.</p>
-  <div class="bar">
-    <select id="kind">
-      <option value="srt">زیرنویس اصلی / Target subtitles</option>
-      <option value="bilingual">دوزبانه / Bilingual</option>
-    </select>
-    <button id="load" type="button">بارگذاری / Load</button>
-    <button id="save" type="button" class="primary">ذخیره / Save</button>
-    <button id="reburn" type="button">ساخت دوباره ویدیو / Re-burn video</button>
-    <a id="back" href="/">بازگشت / Back</a>
+<div class="topbar">
+  <div class="topbar-in">
+    <div class="brand"><span class="mark" aria-hidden="true"><i></i><i></i><i></i></span><span>SubFa</span></div>
+    <button id="langBtn" type="button">English</button>
   </div>
-  <table>
-    <thead><tr>
-      <th>شروع (ثانیه) / Start</th><th>پایان (ثانیه) / End</th><th>متن / Text</th>
-    </tr></thead>
-    <tbody id="rows"></tbody>
-  </table>
-  <div id="msg"></div>
+</div>
+<main class="wrap">
+  <div class="titlerow">
+    <h1 data-i18n="editTitle">ویرایش زیرنویس</h1>
+    <span class="count" id="cueCount"></span>
+    <a class="backlink" id="back" href="/" data-i18n="back">بازگشت</a>
+  </div>
+  <p class="intro" data-i18n="intro">متن هر زیرنویس را اصلاح کن، ذخیره کن، و بدون پیاده‌سازی دوباره، ویدیوی زیرنویس‌دار را از نو بساز یا فایل اصلاح‌شده را دانلود کن.</p>
+  <div class="panel toolbar">
+    <select id="kind">
+      <option value="srt" data-i18n="kindSrt">زیرنویس اصلی</option>
+      <option value="bilingual" data-i18n="kindBilingual">دوزبانه</option>
+    </select>
+    <button id="load" type="button" class="btn" data-i18n="load">بارگذاری</button>
+    <button id="save" type="button" class="btn primary" data-i18n="save">ذخیره</button>
+    <button id="reburn" type="button" class="btn" data-i18n="reburn">ساخت دوباره ویدیو</button>
+  </div>
+  <div id="msg" role="status"></div>
+  <div class="colheads" aria-hidden="true">
+    <span data-i18n="thRow">ردیف</span><span data-i18n="thStart">شروع (ثانیه)</span><span data-i18n="thEnd">پایان (ثانیه)</span><span data-i18n="thText">متن</span>
+  </div>
+  <div id="rows"></div>
+  <div class="panel bottombar">
+    <div class="grp">
+      <button id="save2" type="button" class="btn primary" data-i18n="save">ذخیره</button>
+      <button id="reburn2" type="button" class="btn" data-i18n="reburn">ساخت دوباره ویدیو</button>
+    </div>
+    <a class="backlink" href="/" data-i18n="backLong">بازگشت به صفحهٔ ساخت زیرنویس</a>
+  </div>
 </main>
 <script>
+const T = {
+  fa: { docTitle:"SubFa: ویرایش زیرنویس", editTitle:"ویرایش زیرنویس", intro:"متن هر زیرنویس را اصلاح کن، ذخیره کن، و بدون پیاده‌سازی دوباره، ویدیوی زیرنویس‌دار را از نو بساز یا فایل اصلاح‌شده را دانلود کن.", kindSrt:"زیرنویس اصلی", kindBilingual:"دوزبانه", load:"بارگذاری", save:"ذخیره", reburn:"ساخت دوباره ویدیو", back:"بازگشت", backLong:"بازگشت به صفحهٔ ساخت زیرنویس", thRow:"ردیف", thStart:"شروع (ثانیه)", thEnd:"پایان (ثانیه)", thText:"متن", thStartShort:"شروع", thEndShort:"پایان", cuesCount:"{n} زیرنویس", savedLine:"{n} زیرنویس ذخیره شد", reburnedLine:"ساخته شد: " },
+  en: { docTitle:"SubFa: Edit subtitles", editTitle:"Edit subtitles", intro:"Fix any cue, save, and re-burn or re-download. No re-transcription.", kindSrt:"Target subtitles", kindBilingual:"Bilingual", load:"Load", save:"Save", reburn:"Re-burn video", back:"Back", backLong:"Back to the subtitle maker page", thRow:"#", thStart:"Start (seconds)", thEnd:"End (seconds)", thText:"Text", thStartShort:"Start", thEndShort:"End", cuesCount:"{n} cues", savedLine:"Saved {n} cues", reburnedLine:"Re-burned: " }
+};
+let lang = localStorage.getItem("subfa-lang") || "fa";
+function applyLang() {
+  document.documentElement.lang = lang;
+  document.documentElement.dir = lang === "fa" ? "rtl" : "ltr";
+  document.title = T[lang].docTitle;
+  document.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = T[lang][el.dataset.i18n] || el.textContent; });
+  document.getElementById("langBtn").textContent = lang === "fa" ? "English" : "فارسی";
+  document.querySelectorAll(".mini-label").forEach(el => { el.textContent = T[lang][el.dataset.ml]; });
+}
+document.getElementById("langBtn").addEventListener("click", () => { lang = lang === "fa" ? "en" : "fa"; localStorage.setItem("subfa-lang", lang); applyLang(); });
+
 const jobId = location.pathname.split("/")[2];
 const rows = document.getElementById("rows");
 const msg = document.getElementById("msg");
 const kindSel = document.getElementById("kind");
 
+function setMsg(text, isErr) { msg.textContent = text; msg.classList.toggle("err", !!isErr); }
+function markActive(cue) {
+  rows.querySelectorAll(".cue").forEach(c => c.classList.toggle("active", c === cue));
+}
+rows.addEventListener("focusin", (e) => { const cue = e.target.closest(".cue"); if (cue) markActive(cue); });
+rows.addEventListener("click", (e) => { const cue = e.target.closest(".cue"); if (cue) markActive(cue); });
+
 async function load() {
-  msg.textContent = "";
+  setMsg("");
+  document.getElementById("cueCount").textContent = "";
   const res = await fetch("/jobs/" + jobId + "/cues?kind=" + kindSel.value);
   const data = await res.json();
-  if (data.error) { msg.textContent = data.error; rows.innerHTML = ""; return; }
+  if (data.error) { setMsg(data.error, true); rows.innerHTML = ""; return; }
   rows.innerHTML = "";
-  data.cues.forEach(c => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = '<td><input type="number" step="0.1" min="0" value="' + c.start.toFixed(2) + '"></td>' +
-      '<td><input type="number" step="0.1" min="0" value="' + c.end.toFixed(2) + '"></td>' +
-      '<td><textarea>' + c.text.replace(/&/g, "&amp;").replace(/</g, "&lt;") + "</textarea></td>";
-    rows.appendChild(tr);
+  data.cues.forEach((c, i) => {
+    const div = document.createElement("div");
+    div.className = "cue";
+    div.innerHTML = '<span class="cue-num">' + (i + 1) + "</span>" +
+      '<label class="tf start"><span class="mini-label" data-ml="thStartShort">' + T[lang].thStartShort + '</span><input type="number" step="0.1" min="0" value="' + c.start.toFixed(2) + '"></label>' +
+      '<label class="tf end"><span class="mini-label" data-ml="thEndShort">' + T[lang].thEndShort + '</span><input type="number" step="0.1" min="0" value="' + c.end.toFixed(2) + '"></label>' +
+      '<textarea>' + c.text.replace(/&/g, "&amp;").replace(/</g, "&lt;") + "</textarea>";
+    rows.appendChild(div);
   });
-  msg.textContent = data.cues.length + " cues";
+  document.getElementById("cueCount").textContent = T[lang].cuesCount.replace("{n}", data.cues.length);
 }
 function collect() {
-  return Array.from(rows.querySelectorAll("tr")).map(tr => {
-    const inputs = tr.querySelectorAll("input");
-    return { start: parseFloat(inputs[0].value), end: parseFloat(inputs[1].value), text: tr.querySelector("textarea").value };
+  return Array.from(rows.querySelectorAll(".cue")).map(cue => {
+    const inputs = cue.querySelectorAll("input");
+    return { start: parseFloat(inputs[0].value), end: parseFloat(inputs[1].value), text: cue.querySelector("textarea").value };
   });
 }
-document.getElementById("load").addEventListener("click", load);
-kindSel.addEventListener("change", load);
-document.getElementById("save").addEventListener("click", async () => {
+async function saveCues() {
   const res = await fetch("/jobs/" + jobId + "/cues?kind=" + kindSel.value, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ cues: collect() })
   });
   const data = await res.json();
-  msg.textContent = data.error ? data.error : ("Saved " + data.saved + " cues / ذخیره شد");
-});
-document.getElementById("reburn").addEventListener("click", async () => {
+  setMsg(data.error ? data.error : T[lang].savedLine.replace("{n}", data.saved), !!data.error);
+  return data;
+}
+async function reburn() {
+  await saveCuesSilent();
+  const res = await fetch("/jobs/" + jobId + "/reburn?kind=" + kindSel.value, { method: "POST" });
+  const data = await res.json();
+  if (data.error) { setMsg(data.error, true); return; }
+  setMsg("");
+  msg.innerHTML = T[lang].reburnedLine + '<a href="/jobs/' + jobId + '/files/burned">' + data.burned + "</a>";
+}
+async function saveCuesSilent() {
   await fetch("/jobs/" + jobId + "/cues?kind=" + kindSel.value, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ cues: collect() })
   });
-  const res = await fetch("/jobs/" + jobId + "/reburn?kind=" + kindSel.value, { method: "POST" });
-  const data = await res.json();
-  msg.innerHTML = data.error ? data.error :
-    'Re-burned / ساخته شد: <a href="/jobs/' + jobId + '/files/burned">' + data.burned + "</a>";
-});
+}
+document.getElementById("load").addEventListener("click", load);
+kindSel.addEventListener("change", load);
+document.getElementById("save").addEventListener("click", saveCues);
+document.getElementById("save2").addEventListener("click", saveCues);
+document.getElementById("reburn").addEventListener("click", reburn);
+document.getElementById("reburn2").addEventListener("click", reburn);
+applyLang();
 load();
 </script>
 </body>
