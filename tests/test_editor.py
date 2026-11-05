@@ -38,6 +38,19 @@ def _seed_job(tmp_path, with_video=False):
     return job_id, srt_path
 
 
+def test_pages_have_persistent_language_toggle():
+    client = TestClient(web_app.app)
+    index = client.get("/").text
+    edit = client.get("/jobs/whatever/edit").text
+    for page in (index, edit):
+        assert 'id="langBtn"' in page
+        assert "data-i18n" in page
+        # Both pages share one localStorage key, so the language
+        # chosen on the index page carries over to the editor.
+        assert 'localStorage.getItem("subfa-lang")' in page
+        assert 'localStorage.setItem("subfa-lang"' in page
+
+
 def test_editor_get_cues(tmp_path):
     job_id, _ = _seed_job(tmp_path)
     client = TestClient(web_app.app)

@@ -1,12 +1,43 @@
 import pytest
 
-from bot.routing import classify_message
+from bot.routing import (
+    LangStore,
+    classify_message,
+    default_ui_lang,
+    parse_ui_callback,
+)
 
 
 def test_bot_routes_link_message_to_url_flow():
     kind, url = classify_message("اینو ببین https://www.youtube.com/watch?v=abc مرسی")
     assert kind == "url"
     assert url == "https://www.youtube.com/watch?v=abc"
+
+
+def test_ui_language_selection_routing(tmp_path):
+    # The picker callbacks route to a stored per chat choice.
+    assert parse_ui_callback("ui:fa") == "fa"
+    assert parse_ui_callback("ui:en") == "en"
+    assert parse_ui_callback("ui:fr") is None
+    # The subtitle flow's callbacks must not be swallowed.
+    assert parse_ui_callback("lang:fa") is None
+    assert parse_ui_callback(None) is None
+
+    store = LangStore(tmp_path / "lang.json")
+    # Defaults: fa clients get Persian, other known codes English,
+    # no code at all still Persian.
+    assert store.get(1, "fa-IR") == "fa"
+    assert store.get(2, "en") == "en"
+    assert store.get(3, None) == "fa"
+    assert default_ui_lang("de") == "en"
+
+    store.set(2, "fa")
+    assert store.get(2, "en") == "fa"
+    # The choice survives a restart (fresh store, same file).
+    assert LangStore(tmp_path / "lang.json").get(2, "en") == "fa"
+    # Unknown languages are ignored, never stored.
+    store.set(2, "fr")
+    assert store.get(2, "en") == "fa"
 
 
 def test_bot_routes_plain_text_to_help():
