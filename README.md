@@ -266,6 +266,15 @@ Two honest limits apply, both configurable in `.env`:
   own uploads, public domain work, or material you have permission
   for. SubFa is a subtitling tool, not a way around anyone's rights.
 
+For YouTube links, SubFa can also fetch the media through public
+Invidious community instances, which proxy the video file at high
+quality (1080p and up) from server IPs where YouTube itself gates
+the direct download. The instance list is configurable with
+`SUBFA_INVIDIOUS_INSTANCES`, and the route can be turned off with
+`SUBFA_DISABLE_INVIDIOUS=1`. These are third-party community
+servers: they can be slow or unavailable, and when every instance
+fails, SubFa automatically falls back to the 360p route.
+
 ## Privacy
 
 Files are processed locally, in a temporary folder, and deleted when
