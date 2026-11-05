@@ -13,7 +13,7 @@ import pytest
 
 pytest.importorskip("telegram")
 
-from bot.bot import start_keyboard, start_text  # noqa: E402
+from bot.bot import settings_keyboard, start_keyboard, start_text  # noqa: E402
 from bot.premium import PREMIUM  # noqa: E402
 
 POOL_FILES = [
@@ -76,3 +76,34 @@ def test_start_text_has_one_premium_emoji_in_header():
     text = start_text("fa")
     assert text.count("<tg-emoji") == 1
     assert text.startswith("<tg-emoji")
+
+
+def test_settings_keyboard_shape_and_defaults():
+    rows = settings_keyboard("fa").inline_keyboard
+    # Three style rows, one quality row, one tone row, Start row.
+    assert len(rows) == 6
+    assert rows[0][0].callback_data == "style:cinema"
+    assert rows[0][0].text.startswith("✓")  # cinema is the default
+    quality_row = rows[3]
+    assert [b.callback_data for b in quality_row] == [
+        "quality:source", "quality:720", "quality:480", "quality:360",
+    ]
+    # 720 is the marked default; the others are unmarked.
+    assert quality_row[1].text.startswith("✓")
+    assert not quality_row[0].text.startswith("✓")
+    tone_row = rows[4]
+    assert [b.callback_data for b in tone_row] == [
+        "tone:auto", "tone:formal", "tone:informal", "tone:simple",
+    ]
+    assert tone_row[0].text.startswith("✓")  # auto is the default
+    go = rows[5][0]
+    assert go.callback_data == "go"
+    assert go.style == "primary"
+
+
+def test_settings_keyboard_marks_nondefault_choices():
+    rows = settings_keyboard("en", style="reels", quality="480", tone="simple").inline_keyboard
+    assert rows[1][0].text.startswith("✓")       # reels style row
+    assert not rows[0][0].text.startswith("✓")   # cinema unmarked now
+    assert rows[3][2].text.startswith("✓")       # 480
+    assert rows[4][3].text.startswith("✓")       # simple

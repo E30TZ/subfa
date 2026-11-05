@@ -39,6 +39,17 @@ def test_burn_command_uses_bare_name_for_full_paths():
     assert "ass=tiny.subbed.ass" in cmd
 
 
+def test_burn_command_scales_before_ass_when_capped():
+    cmd = build_burn_command("in.mp4", "subs.ass", "out.mp4", max_height=480)
+    vf = cmd[cmd.index("-vf") + 1]
+    # Scale first (min() never upscales), subtitles drawn after, at
+    # the output size.
+    assert vf == "scale=-2:min(ih\\,480),ass=subs.ass"
+    # Without a cap the command is exactly the historical one.
+    plain = build_burn_command("in.mp4", "subs.ass", "out.mp4")
+    assert plain[plain.index("-vf") + 1] == "ass=subs.ass"
+
+
 def test_config_defaults():
     settings = Settings()
     # Updated with the ASR engine routing change (docs/ASR.md):
