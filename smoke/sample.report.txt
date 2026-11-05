@@ -1,0 +1,14 @@
+SubFa quality report
+Timeline: 0:04 (4.5s, last cue end)
+Cues: 1
+Cues over the 20 chars/sec reading limit: 0 (0.0%)
+Transcript path: whisper
+Model / engine info: faster-whisper / tiny
+Glossary terms applied: 0
+Languages: en -> fa
+
+گزارش کیفیت SubFa
+تعداد زیرنویس‌ها: 1
+زیرنویس‌های سریع‌تر از حد خواندن: 0 (0.0٪)
+مسیر متن: whisper
+اصطلاحات واژه‌نامه اعمال‌شده: 0

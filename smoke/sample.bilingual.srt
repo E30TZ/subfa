@@ -1,0 +1,6 @@
+1
+00:00:00,000 --> 00:00:04,500
+Hello world, programming is fun,
+subtitles help everyone learn faster.
+Hello World، برنامه‌نویسی سرگرم کننده است.
+زیرنویس‌ها به همه کمک می‌کنند سریعتر یاد بگیرند.
