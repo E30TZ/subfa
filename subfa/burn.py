@@ -134,8 +134,12 @@ def burn_subtitles(
     command = build_burn_command(input_video, ass_path, output_path)
     completed = subprocess.run(command, capture_output=True, text=True)
     if completed.returncode != 0:
+        # Keep the tail of stderr, not just the last line: ffmpeg
+        # puts the generic failure last and the actual cause (bad
+        # filter, missing library, font problem) a few lines above.
+        tail = "\n".join(completed.stderr.strip().splitlines()[-8:])
         raise SubfaError(
             "Burning subtitles into the video failed. "
-            f"ffmpeg said: {completed.stderr.strip().splitlines()[-1] if completed.stderr.strip() else 'unknown error'}"
+            f"ffmpeg said: {tail if tail else 'unknown error'}"
         )
     return output_path
