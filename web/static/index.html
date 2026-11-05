@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl" id="root">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SubFa: Persian subtitles from any video</title>
+<style>
+  :root { --ink:#14231c; --muted:#4c5f55; --line:#cfe0d6; --brand:#047857; --bg:#f4f8f5; --card:#ffffff; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: Vazirmatn, Tahoma, system-ui, sans-serif; background:var(--bg); color:var(--ink); }
+  main { max-width: 640px; margin: 0 auto; padding: 20px 16px 48px; }
+  header { display:flex; justify-content:space-between; align-items:center; }
+  h1 { font-size: 26px; margin: 8px 0 4px; }
+  p.lead { color: var(--muted); margin: 0 0 18px; line-height: 1.8; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; }
+  #drop { border:2px dashed var(--line); border-radius:12px; padding:26px 12px; text-align:center; cursor:pointer; color:var(--muted); }
+  #drop.over { border-color: var(--brand); color: var(--brand); }
+  #drop strong { display:block; font-size:17px; color:var(--ink); margin-bottom:6px; }
+  .or { text-align:center; color:var(--muted); margin:12px 0 6px; font-size:13px; }
+  label { display:block; font-size:14px; margin:12px 0 6px; }
+  input[type=url], select { width:100%; padding:11px; border:1px solid var(--line); border-radius:10px; font:inherit; background:#fff; }
+  .row { display:flex; gap:16px; flex-wrap:wrap; margin-top:6px; }
+  .check { display:flex; align-items:center; gap:8px; font-size:14px; min-height:44px; }
+  .check input { width:20px; height:20px; }
+  button { font:inherit; cursor:pointer; }
+  #langBtn { background:none; border:1px solid var(--line); border-radius:999px; padding:8px 14px; min-height:44px; }
+  #go { width:100%; margin-top:18px; background:var(--brand); color:#fff; border:0; border-radius:12px; padding:14px; font-size:16px; min-height:52px; }
+  #go:disabled { opacity:.55; }
+  #status { margin-top:16px; font-size:14px; line-height:1.9; }
+  #bar { height:8px; background:var(--line); border-radius:99px; overflow:hidden; display:none; }
+  #bar i { display:block; height:100%; width:0; background:var(--brand); transition:width .4s; }
+  #links a { display:block; margin-top:8px; color:var(--brand); }
+  .err { color:#b42318; }
+  footer { color:var(--muted); font-size:13px; margin-top:18px; line-height:1.9; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div style="font-weight:800; font-size:19px;">SubFa</div>
+    <button id="langBtn" type="button">English</button>
+  </header>
+  <h1 data-i18n="title">زیرنویس فارسی از هر ویدیو</h1>
+  <p class="lead" data-i18n="lead">فایل ویدیو یا صدا را بفرست، یا لینک ویدیو را بچسبان. زیرنویس فارسی، زیرنویس دوزبانه و متن کامل را تحویل بگیر. فایل‌ها همین جا پردازش و پاک می‌شوند.</p>
+  <form id="form" class="card">
+    <div id="drop" role="button" tabindex="0">
+      <strong data-i18n="dropTitle">فایل را اینجا رها کن</strong>
+      <span data-i18n="dropSub">یا برای انتخاب فایل کلیک کن (ویدیو یا صدا)</span>
+      <div id="fileName"></div>
+    </div>
+    <input type="file" id="file" accept="video/*,audio/*,.mkv,.srt" hidden>
+    <div class="or" data-i18n="or">یا</div>
+    <label for="url" data-i18n="urlLabel">لینک ویدیو (یوتیوب و سایت‌های دیگر)</label>
+    <input type="url" id="url" placeholder="https://www.youtube.com/watch?v=..." dir="ltr">
+    <label for="target" data-i18n="targetLabel">زبان زیرنویس</label>
+    <select id="target">
+      <option value="fa" data-i18n="faOpt">فارسی</option>
+      <option value="en">English</option>
+    </select>
+    <label for="glossary" data-i18n="glossaryLabel">واژه‌نامه تخصصی (اختیاری)</label>
+    <select id="glossary">
+      <option value="" data-i18n="noneOpt">هیچ‌کدام</option>
+      <option value="general">General / عمومی</option>
+      <option value="programming">Programming / برنامه‌نویسی</option>
+      <option value="gaming">Gaming / بازی</option>
+    </select>
+    <label for="style" data-i18n="styleLabel">سبک زیرنویس روی ویدیو</label>
+    <select id="style">
+      <option value="cinema" data-i18n="cinemaOpt">سینمایی</option>
+      <option value="reels" data-i18n="reelsOpt">ریلز عمودی (9:16)</option>
+      <option value="learning" data-i18n="learningOpt">آموزشی دوزبانه</option>
+    </select>
+    <div class="row">
+      <label class="check"><input type="checkbox" id="burn" checked> <span data-i18n="burnOpt">ویدیوی زیرنویس‌دار هم بساز</span></label>
+      <label class="check"><input type="checkbox" id="bilingual"> <span data-i18n="bilingualOpt">زیرنویس دوزبانه روی ویدیو</span></label>
+    </div>
+    <button id="go" type="submit" data-i18n="go">ساخت زیرنویس</button>
+    <div id="status"></div>
+    <div id="bar"><i></i></div>
+    <div id="links"></div>
+  </form>
+  <footer data-i18n="foot">سقف حجم و مدت در سرور تنظیم می‌شود و هنگام خطا دقیق گفته می‌شود. فقط محتوایی را دانلود یا زیرنویس کن که حق استفاده از آن را داری.</footer>
+</main>
+<script>
+const T = {
+  fa: { title:"زیرنویس فارسی از هر ویدیو", lead:"فایل ویدیو یا صدا را بفرست، یا لینک ویدیو را بچسبان. زیرنویس فارسی، زیرنویس دوزبانه و متن کامل را تحویل بگیر. فایل‌ها همین جا پردازش و پاک می‌شوند.", dropTitle:"فایل را اینجا رها کن", dropSub:"یا برای انتخاب فایل کلیک کن (ویدیو یا صدا)", or:"یا", urlLabel:"لینک ویدیو (یوتیوب و سایت‌های دیگر)", targetLabel:"زبان زیرنویس", faOpt:"فارسی", glossaryLabel:"واژه‌نامه تخصصی (اختیاری)", noneOpt:"هیچ‌کدام", styleLabel:"سبک زیرنویس روی ویدیو", cinemaOpt:"سینمایی", reelsOpt:"ریلز عمودی (9:16)", learningOpt:"آموزشی دوزبانه", burnOpt:"ویدیوی زیرنویس‌دار هم بساز", bilingualOpt:"زیرنویس دوزبانه روی ویدیو", go:"ساخت زیرنویس", foot:"سقف حجم و مدت در سرور تنظیم می‌شود و هنگام خطا دقیق گفته می‌شود. فقط محتوایی را دانلود یا زیرنویس کن که حق استفاده از آن را داری.", working:"در حال ساخت زیرنویس:", done:"تمام شد. فایل‌ها:", captionsNote:"منبع متن: زیرنویس منتشرشده خود ویدیو", whisperNote:"منبع متن: پیاده‌سازی با Whisper", errPrefix:"خطا: ", editLink:"ویرایش زیرنویس‌ها", reportLine:"گزارش کیفیت: {c} زیرنویس، {p}٪ سریع‌تر از حد خواندن، واژه‌نامه: {g}", kinds:{srt:"زیرنویس", bilingual:"زیرنویس دوزبانه", transcript:"متن کامل", burned:"ویدیوی زیرنویس‌دار", report:"گزارش کیفیت"} },
+  en: { title:"Persian subtitles from any video", lead:"Send a video or audio file, or paste a video link. Get Persian subtitles, a bilingual subtitle file and a full transcript back. Files are processed here and deleted.", dropTitle:"Drop a file here", dropSub:"or click to choose a file (video or audio)", or:"or", urlLabel:"Video link (YouTube and other sites)", targetLabel:"Subtitle language", faOpt:"Persian", glossaryLabel:"Glossary (optional)", noneOpt:"None", styleLabel:"Burn-in style", cinemaOpt:"Cinema", reelsOpt:"Reels (vertical 9:16)", learningOpt:"Learning (bilingual)", burnOpt:"Also make the subtitled video", bilingualOpt:"Bilingual subtitles on the video", go:"Make subtitles", foot:"Size and duration caps are set on the server and reported exactly when hit. Only download or subtitle content you have the right to use.", working:"Making subtitles:", done:"Done. Files:", captionsNote:"Transcript source: the video's own published captions", whisperNote:"Transcript source: Whisper transcription", errPrefix:"Error: ", editLink:"Edit subtitles", reportLine:"Quality: {c} cues, {p}% over the reading limit, glossary applied: {g}", kinds:{srt:"Subtitles", bilingual:"Bilingual subtitles", transcript:"Transcript", burned:"Subtitled video", report:"Quality report"} }
+};
+let lang = "fa";
+const $ = (s) => document.querySelector(s);
+function applyLang() {
+  document.documentElement.lang = lang;
+  document.documentElement.dir = lang === "fa" ? "rtl" : "ltr";
+  document.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = T[lang][el.dataset.i18n] || el.textContent; });
+  $("#langBtn").textContent = lang === "fa" ? "English" : "فارسی";
+}
+$("#langBtn").addEventListener("click", () => { lang = lang === "fa" ? "en" : "fa"; applyLang(); });
+
+const drop = $("#drop"), fileInput = $("#file");
+drop.addEventListener("click", () => fileInput.click());
+drop.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); } });
+["dragover","dragenter"].forEach(ev => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave","drop"].forEach(ev => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", (e) => { if (e.dataTransfer.files.length) { fileInput.files = e.dataTransfer.files; showName(); } });
+fileInput.addEventListener("change", showName);
+function showName() { $("#fileName").textContent = fileInput.files.length ? fileInput.files[0].name : ""; }
+
+$("#form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const status = $("#status"), links = $("#links"), bar = $("#bar"), fill = bar.querySelector("i");
+  status.textContent = ""; links.innerHTML = ""; bar.style.display = "block"; fill.style.width = "5%";
+  $("#go").disabled = true;
+  const fd = new FormData();
+  if (fileInput.files.length) fd.append("file", fileInput.files[0]);
+  fd.append("url", $("#url").value.trim());
+  fd.append("target", $("#target").value);
+  fd.append("glossary", $("#glossary").value);
+  fd.append("burn", $("#burn").checked ? "true" : "false");
+  fd.append("bilingual", $("#bilingual").checked ? "true" : "false");
+  fd.append("style", $("#style").value);
+  try {
+    const created = await (await fetch("/jobs", { method: "POST", body: fd })).json();
+    if (created.error) throw new Error(created.error);
+    const id = created.job_id;
+    const poll = async () => {
+      const job = await (await fetch("/jobs/" + id)).json();
+      fill.style.width = Math.round((job.fraction || 0) * 100) + "%";
+      status.textContent = T[lang].working + " " + (job.stage || "") + " (" + Math.round((job.fraction || 0) * 100) + "%)";
+      if (job.status === "running") { setTimeout(poll, 2000); return; }
+      $("#go").disabled = false;
+      if (job.status === "error") { status.innerHTML = '<span class="err">' + T[lang].errPrefix + job.error + "</span>"; return; }
+      status.textContent = T[lang].done + " " + (job.path_used === "captions" ? T[lang].captionsNote : T[lang].whisperNote);
+      links.innerHTML = job.outputs.map(k => '<a href="/jobs/' + id + '/files/' + k + '">' + (T[lang].kinds[k] || k) + "</a>").join("");
+      if (job.report) {
+        const line = T[lang].reportLine.replace("{c}", job.report.cue_count).replace("{p}", job.report.over_speed_percent).replace("{g}", job.report.glossary_applied);
+        links.innerHTML += '<div style="margin-top:10px">' + line + "</div>";
+      }
+      links.innerHTML += '<a href="/jobs/' + id + '/edit" style="font-weight:700">' + T[lang].editLink + "</a>";
+    };
+    poll();
+  } catch (err) {
+    $("#go").disabled = false;
+    status.innerHTML = '<span class="err">' + T[lang].errPrefix + err.message + "</span>";
+  }
+});
+applyLang();
+</script>
+</body>
+</html>
