@@ -24,9 +24,19 @@ def test_ass_style_uses_vazirmatn_by_default():
 def test_burn_command_construction():
     cmd = build_burn_command("in.mp4", "subs.ass", "out.mp4")
     assert cmd[0] == "ffmpeg"
-    assert "ass='subs.ass'" in cmd
+    # Bare filename, unquoted: quoted paths are rejected by the
+    # ffmpeg 8 filter parser (Homebrew), and the command runs with
+    # cwd set to the .ass directory.
+    assert "ass=subs.ass" in cmd
     assert cmd[-1] == "out.mp4"
     assert "-c:a" in cmd
+
+
+def test_burn_command_uses_bare_name_for_full_paths():
+    cmd = build_burn_command(
+        "in.mp4", "/some/dir/with space/tiny.subbed.ass", "out.mp4"
+    )
+    assert "ass=tiny.subbed.ass" in cmd
 
 
 def test_config_defaults():
