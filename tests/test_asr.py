@@ -2,6 +2,8 @@
 and WER/CER metrics. Fully offline: fake engines and stubbed
 downloaders only, no model is ever fetched here."""
 
+from pathlib import Path
+
 import pytest
 
 from subfa import models as models_module
@@ -56,7 +58,9 @@ def test_asr_config_env_overrides(monkeypatch):
     assert settings.asr_engine == "persian"
     assert settings.whisper_model == "tiny"
     assert settings.persian_model == "someone/other-model"
-    assert str(settings.model_cache) == "/tmp/subfa-models-test"
+    # Compare as paths: on Windows the same location stringifies
+    # with backslashes, which is the same directory.
+    assert settings.model_cache == Path("/tmp/subfa-models-test")
 
 
 def test_asr_config_legacy_model_env(monkeypatch):
