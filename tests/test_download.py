@@ -7,10 +7,32 @@ from subfa import SubfaError
 from subfa.config import Settings
 from subfa.download import (
     FakeDownloader,
+    base_options,
     extract_url,
     is_url,
     load_caption_cues,
 )
+
+
+def test_base_options_prefer_youtube_clients_that_answer_datacenter_ips():
+    # YouTube bot-checks its default player clients on datacenter
+    # IPs; web/mweb/ios still return metadata and caption tracks.
+    clients = base_options()["extractor_args"]["youtube"]["player_client"]
+    assert clients == ["web", "mweb", "ios"]
+
+
+def test_base_options_use_system_certs_when_ca_bundle_env_set(monkeypatch):
+    # Behind a TLS-intercepting proxy the env names a CA bundle;
+    # yt-dlp must then prefer system certs (which honour it) over
+    # certifi, or every request fails CERTIFICATE_VERIFY_FAILED.
+    monkeypatch.setenv("SSL_CERT_FILE", "/run/example/ca-bundle.pem")
+    monkeypatch.delenv("REQUESTS_CA_BUNDLE", raising=False)
+    assert base_options()["compat_opts"] == ["no-certifi"]
+    monkeypatch.delenv("SSL_CERT_FILE")
+    monkeypatch.setenv("REQUESTS_CA_BUNDLE", "/run/example/ca-bundle.pem")
+    assert base_options()["compat_opts"] == ["no-certifi"]
+    monkeypatch.delenv("REQUESTS_CA_BUNDLE")
+    assert "compat_opts" not in base_options()
 
 
 def test_is_url():

@@ -4,7 +4,7 @@ import subprocess
 import pytest
 
 from subfa.config import Settings
-from subfa.download import FakeDownloader
+from subfa.download import DownloadResult, FakeDownloader
 from subfa.pipeline import Pipeline
 from subfa.transcribe import FakeEngine
 from subfa.translate import FakeTranslator
@@ -96,6 +96,48 @@ def test_pipeline_url_captions_fast_path_skips_whisper(tmp_path):
     assert engine.calls == 0
     srt_text = result.outputs["srt"].read_text(encoding="utf-8")
     assert "[fa] First published caption line" in srt_text
+
+
+class CaptionsOnlyDownloader:
+    """Link whose media is gated by the site (YouTube on a
+    datacenter IP): captions arrive, the video file does not."""
+
+    name = "captions-only"
+
+    def __init__(self, captions_path):
+        self.captions_path = captions_path
+
+    def download(self, url, dest_dir, settings):
+        return DownloadResult(
+            media_path=None,
+            captions_path=self.captions_path,
+            captions_language="en",
+            title="Some Talk About GitHub",
+        )
+
+
+def test_pipeline_url_captions_only_when_media_gated(tmp_path):
+    captions = tmp_path / "clip.en.srt"
+    captions.write_text(CAPTIONS, encoding="utf-8")
+    engine = FakeEngine()
+    pipeline = make_pipeline(
+        tmp_path, engine=engine, downloader=CaptionsOnlyDownloader(captions)
+    )
+    result = pipeline.run_url(
+        "https://youtube.example/watch?v=9",
+        tmp_path / "out",
+        tmp_path / "dl",
+        target="fa",
+        burn=True,
+    )
+    assert result.media_missing is True
+    assert result.path_used == "captions"
+    assert engine.calls == 0
+    assert "burned" not in result.outputs
+    srt_text = result.outputs["srt"].read_text(encoding="utf-8")
+    assert "[fa] First published caption line" in srt_text
+    # Outputs are named from the video title when there is no file.
+    assert result.outputs["srt"].name.startswith("Some-Talk-About-GitHub")
 
 
 @pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not installed")
