@@ -1,6 +1,6 @@
 <div align="center">
 
-# SubFa
+<img src="assets/logo-lockup.svg" alt="SubFa" width="360">
 
 **Send a file, or paste a video link, get Persian subtitles back.**
 
@@ -22,6 +22,72 @@ Demo (from the real smoke test in `smoke/SMOKE.md`: a synthetic
 English speech clip, transcribed locally by Whisper tiny, burned in):
 
 ![SubFa demo](assets/demo.gif)
+
+## Install from zero
+
+One script, fetched straight from this repo, takes you from a
+fresh machine (or a fresh Linux VPS) to a running SubFa. It
+clones the project for you, checks Python 3.10+ and ffmpeg,
+builds a virtual environment, and then asks, by number, which
+surface you want: the Telegram bot, the web app, or the CLI.
+
+**Linux, macOS, or a Linux VPS:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/E30TZ/subfa/main/install.sh -o /tmp/subfa.sh && bash /tmp/subfa.sh install
+```
+
+Go straight to one surface by adding a target:
+
+```bash
+bash /tmp/subfa.sh install --target bot
+bash /tmp/subfa.sh install --target web
+bash /tmp/subfa.sh install --target cli
+```
+
+Flags can answer the wizard's questions up front; anything not
+given is still asked. A fully scripted bot install looks like:
+
+```bash
+bash /tmp/subfa.sh install --target bot --token YOUR_TOKEN --admin-id 123456789 --no-models --run service
+```
+
+**Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/E30TZ/subfa/main/install.ps1 | iex
+```
+
+Cloning this repo and running
+`powershell -ExecutionPolicy Bypass -File install.ps1` does the
+same thing, and that form also takes the matching parameters
+(`-Target`, `-Token`, `-AdminId`, `-Port`, `-Domain`, `-Ip`,
+`-Models`, `-NoModels`, `-Run`, `-Lang`).
+
+Already inside a checkout? `bash install.sh` or
+`install.ps1` there runs the same wizard without cloning
+anything. Every flag is documented in
+[docs/INSTALL.md](docs/INSTALL.md).
+
+What the wizard asks, per branch:
+
+- **Bot:** your bot token from @BotFather (typed hidden, checked
+  live against Telegram, never printed back), your numeric
+  Telegram ID (stored in `.env` for your own use), whether to
+  download the speech and translation models now, and how to run
+  it: in this terminal, as a systemd service on Linux, or later
+  by hand.
+- **Web:** the port (default 8000), then domain or IP. With a
+  domain on a Linux VPS it can also set up an nginx reverse proxy
+  and a free Let's Encrypt HTTPS certificate. Without a domain it
+  serves on the machine's IP and prints the address.
+- **CLI:** installs the command, offers the model download, and
+  prints real example commands.
+
+The full manual path, mirroring the wizard step for step
+(prerequisites per OS, extras per surface, `.env` keys, complete
+systemd units, the nginx and certbot setup, updating and
+uninstalling), is in [docs/INSTALL.md](docs/INSTALL.md).
 
 ## Try it
 
@@ -74,14 +140,9 @@ flowchart LR
     F --> G["SRT, bilingual SRT, transcript, burned-in video"]
 ```
 
-## Quick start
+## After install: first run
 
-You need Python 3.10+, ffmpeg, and the project dependencies:
-
-```bash
-pip install -e ".[bot,web,translate]"
-cp .env.example .env
-```
+The one-line installer above is the main way to install SubFa; if you used it, your environment is already set up. Prefer to install by hand? The manual path lives in [docs/INSTALL.md](docs/INSTALL.md).
 
 ### CLI
 
