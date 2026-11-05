@@ -1,0 +1,1 @@
+[{"audio":"benchmark_data/en_speech.wav","language":"en","note":"Synthetic English speech generated with ffmpeg's flite filter (voice slt), the same clip as the original smoke test in smoke/SMOKE.md. Reference is the exact text that was synthesized.","reference":"Hello world. Programming is fun. Subtitles help everyone learn faster."}]
