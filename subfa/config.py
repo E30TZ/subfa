@@ -23,6 +23,12 @@ Speech recognition (ASR) settings:
                        (default nezamisafa/whisper-persian-v4).
     SUBFA_MODEL_CACHE  Folder where `subfa download-models` stores
                        model files for fully offline runs.
+
+YouTube high quality route (Invidious):
+    SUBFA_INVIDIOUS_INSTANCES  Comma separated base URLs of public
+                       Invidious instances tried in order when
+                       YouTube gates the direct media download.
+    SUBFA_DISABLE_INVIDIOUS  Set to 1 to skip that route entirely.
 """
 
 from __future__ import annotations

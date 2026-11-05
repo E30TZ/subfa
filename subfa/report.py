@@ -83,6 +83,9 @@ class QualityReport:
             lines.append(f"Caption track: {self.caption_track}")
         if self.media_route == "android-360":
             lines.append("Media: android client (360p)")
+        if self.media_route.startswith("invidious-"):
+            height = self.media_route.split("-", 1)[1]
+            lines.append(f"Media: Invidious proxy ({height}p)")
         if self.quality:
             lines.append(f"Video quality: {self.quality}")
         if self.tone_requested:
@@ -110,6 +113,9 @@ class QualityReport:
             lines.append(f"ترک زیرنویس: {self.caption_track}")
         if self.media_route == "android-360":
             lines.append("رسانه: کلاینت اندروید (360p)")
+        if self.media_route.startswith("invidious-"):
+            height = self.media_route.split("-", 1)[1]
+            lines.append(f"رسانه: پروکسی اینویدیوس ({height}p)")
         if self.quality:
             lines.append(f"کیفیت ویدیو: {self.quality}")
         if self.tone_requested:

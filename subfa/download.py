@@ -47,8 +47,9 @@ class DownloadResult:
     title: str = ""
     duration_seconds: float | None = None
     # Which route served the media file: "standard" for the main
-    # player clients, "android-360" when YouTube's android client
-    # fallback did, None when no media was served at all.
+    # player clients, "invidious-<height>" when a public Invidious
+    # instance proxied it, "android-360" when YouTube's android
+    # client fallback did, None when no media was served at all.
     media_route: str | None = None
 
 
@@ -125,6 +126,154 @@ YOUTUBE_HOSTS = (
     "youtu.be",
     "youtube-nocookie.com",
 )
+
+# Public Invidious instances used as the high quality YouTube media
+# route. An instance's API, asked with local=true, returns stream
+# URLs proxied through the instance itself, so the bytes never come
+# from a gated googlevideo host and no account or cookies are
+# needed. Instances are community servers: any of them can be slow
+# or down, so the route tries each in order and quietly gives up.
+# Override the list with SUBFA_INVIDIOUS_INSTANCES (comma separated)
+# or disable the route with SUBFA_DISABLE_INVIDIOUS=1.
+DEFAULT_INVIDIOUS_INSTANCES = (
+    "https://yt.chocolatemoo53.com",
+    "https://inv.nadeko.net",
+    "https://invidious.nerdvpn.de",
+)
+
+# itags whose video encoding is H.264 (the family that always
+# stream-copies cleanly into an MP4 container).
+H264_ITAGS = {"133", "134", "135", "136", "137", "160", "298", "299"}
+
+
+def invidious_instances() -> list[str]:
+    """The configured Invidious instance base URLs, in try order.
+
+    Empty when the route is disabled via SUBFA_DISABLE_INVIDIOUS."""
+    if os.environ.get("SUBFA_DISABLE_INVIDIOUS", "").strip() in (
+        "1", "true", "yes", "on",
+    ):
+        return []
+    raw = os.environ.get("SUBFA_INVIDIOUS_INSTANCES", "")
+    if raw.strip():
+        return [
+            part.strip().rstrip("/")
+            for part in raw.split(",")
+            if part.strip()
+        ]
+    return list(DEFAULT_INVIDIOUS_INSTANCES)
+
+
+def youtube_video_id(url: str) -> str | None:
+    """The video id of a YouTube link, or None when it has none."""
+    from urllib.parse import parse_qs, urlparse
+
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    if host == "youtu.be" or host.endswith(".youtu.be"):
+        candidate = parsed.path.lstrip("/").split("/")[0]
+        return candidate or None
+    if not _is_youtube_url(url):
+        return None
+    values = parse_qs(parsed.query).get("v")
+    if values and values[0]:
+        return values[0]
+    parts = [part for part in parsed.path.split("/") if part]
+    if len(parts) >= 2 and parts[0] in ("shorts", "embed", "live", "v"):
+        return parts[1]
+    return None
+
+
+def _ssl_context():
+    """TLS context honouring the environment CA bundle, like the
+    caption fetch: behind a TLS-intercepting egress proxy the env
+    names the bundle plain urllib must verify against."""
+    import ssl
+
+    context = ssl.create_default_context()
+    bundle = os.environ.get("SSL_CERT_FILE") or os.environ.get(
+        "REQUESTS_CA_BUNDLE"
+    )
+    if bundle:
+        try:
+            context.load_verify_locations(bundle)
+        except (OSError, ssl.SSLError):
+            pass
+    return context
+
+
+def _format_height(fmt: dict) -> int:
+    """Pixel height of an Invidious adaptive format (0 if unknown)."""
+    for key in ("resolution", "qualityLabel"):
+        match = re.match(r"(\d+)p", str(fmt.get(key) or ""))
+        if match:
+            return int(match.group(1))
+    return 0
+
+
+def _format_codec(fmt: dict) -> str:
+    """Normalised codec name of an Invidious adaptive format."""
+    encoding = str(fmt.get("encoding") or "").lower()
+    if encoding:
+        if encoding.startswith("av01") or encoding.startswith("av1"):
+            return "av1"
+        return encoding
+    mime = str(fmt.get("type") or "")
+    if "avc1" in mime:
+        return "h264"
+    if "vp09" in mime or "vp9" in mime:
+        return "vp9"
+    if "av01" in mime:
+        return "av1"
+    if "mp4a" in mime:
+        return "aac"
+    if "opus" in mime:
+        return "opus"
+    return ""
+
+
+def choose_invidious_streams(
+    formats: list[dict], max_height: int
+) -> tuple[dict, dict, int] | None:
+    """Pick (video, audio, height) from Invidious adaptive formats.
+
+    The video is the best H.264 stream at or under the height cap
+    (H.264 stream-copies into MP4 without surprises); when no H.264
+    stream fits the cap, the best stream overall under the cap
+    wins. A height is never picked above the cap. The audio is the
+    itag 140 AAC track when present, else the first audio format.
+    """
+    videos = [
+        fmt for fmt in formats
+        if str(fmt.get("type") or "").startswith("video") and fmt.get("url")
+    ]
+    audios = [
+        fmt for fmt in formats
+        if str(fmt.get("type") or "").startswith("audio") and fmt.get("url")
+    ]
+    if not videos or not audios:
+        return None
+
+    def rank(fmt: dict) -> tuple[int, int, int]:
+        try:
+            bitrate = int(fmt.get("bitrate") or 0)
+        except (TypeError, ValueError):
+            bitrate = 0
+        return (_format_height(fmt), int(fmt.get("fps") or 0), bitrate)
+
+    under_cap = [fmt for fmt in videos if _format_height(fmt) <= max_height]
+    if not under_cap:
+        return None
+    h264 = [
+        fmt for fmt in under_cap
+        if _format_codec(fmt) == "h264" or str(fmt.get("itag")) in H264_ITAGS
+    ]
+    video = max(h264 or under_cap, key=rank)
+    audio = next(
+        (fmt for fmt in audios if str(fmt.get("itag")) == "140"),
+        audios[0],
+    )
+    return video, audio, _format_height(video)
 
 
 def _is_youtube_url(url: str) -> bool:
@@ -265,6 +414,14 @@ class YtDlpDownloader(Downloader):
         if media_path is not None:
             media_route = "standard"
         elif _is_youtube_url(url):
+            # High quality route: public Invidious instances proxy
+            # the media bytes through their own hosts, which
+            # YouTube's datacenter gate never sees. Any failure
+            # here simply falls through to the android route below.
+            invidious = self._fetch_invidious_media(url, dest_dir, settings)
+            if invidious is not None:
+                media_path, media_route = invidious
+        if media_path is None and _is_youtube_url(url):
             # YouTube bot-gates every player client for media on
             # datacenter IPs except one: the android client still
             # serves format 18, a progressive 360p MP4 with audio.
@@ -342,6 +499,125 @@ class YtDlpDownloader(Downloader):
             media_route=media_route,
         )
 
+
+    def _invidious_video_info(self, instance: str, video_id: str) -> dict:
+        """One instance's video JSON. local=true makes the returned
+        stream URLs proxy through the instance host itself."""
+        import json
+        import urllib.request
+
+        url = f"{instance}/api/v1/videos/{video_id}?local=true"
+        request = urllib.request.Request(
+            url, headers={"User-Agent": "Mozilla/5.0"}
+        )
+        with urllib.request.urlopen(
+            request, context=_ssl_context(), timeout=20
+        ) as response:
+            return json.loads(response.read().decode("utf-8"))
+
+    def _fetch_to_file(
+        self, url: str, dest: Path, budget_bytes: int
+    ) -> int:
+        """Stream a URL into dest, aborting once the byte budget is
+        spent. Returns the number of bytes written."""
+        import urllib.request
+
+        request = urllib.request.Request(
+            url, headers={"User-Agent": "Mozilla/5.0"}
+        )
+        written = 0
+        with urllib.request.urlopen(
+            request, context=_ssl_context(), timeout=60
+        ) as response, dest.open("wb") as handle:
+            while True:
+                chunk = response.read(256 * 1024)
+                if not chunk:
+                    break
+                written += len(chunk)
+                if written > budget_bytes:
+                    raise SubfaError("too_big")
+                handle.write(chunk)
+        return written
+
+    @staticmethod
+    def _mux_media_parts(
+        video_part: Path, audio_part: Path, dest: Path
+    ) -> bool:
+        """Mux separate video and audio files into one MP4 with a
+        stream copy (no re-encode). False when ffmpeg refuses, for
+        example a codec the MP4 container cannot hold."""
+        import subprocess
+
+        completed = subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-i", str(video_part),
+                "-i", str(audio_part),
+                "-c", "copy",
+                str(dest),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        return (
+            completed.returncode == 0
+            and dest.exists()
+            and dest.stat().st_size > 0
+        )
+
+    def _fetch_invidious_media(
+        self, url: str, dest_dir: Path, settings
+    ) -> tuple[Path, str] | None:
+        """The Invidious route: (media path, route) or None.
+
+        Tries each configured instance in order; every failure
+        (instance down, no usable formats, oversized pair, mux
+        refusal) falls through to the next instance, and total
+        failure returns None so the caller continues to the android
+        route. Parts live in a scratch subfolder that is always
+        removed, so a failed attempt leaves nothing the other
+        routes could mistake for served media.
+        """
+        video_id = youtube_video_id(url)
+        instances = invidious_instances()
+        if not video_id or not instances:
+            return None
+        parts_dir = dest_dir / "_invidious"
+        for instance in instances:
+            try:
+                info = self._invidious_video_info(instance, video_id)
+                length = int(info.get("lengthSeconds") or 0)
+                if length and length > settings.max_duration_seconds:
+                    return None
+                chosen = choose_invidious_streams(
+                    info.get("adaptiveFormats") or [],
+                    settings.download_max_height,
+                )
+                if chosen is None:
+                    continue
+                video_fmt, audio_fmt, height = chosen
+                shutil.rmtree(parts_dir, ignore_errors=True)
+                parts_dir.mkdir(parents=True, exist_ok=True)
+                video_part = parts_dir / "video.part"
+                audio_part = parts_dir / "audio.part"
+                budget = settings.max_download_bytes
+                spent = self._fetch_to_file(
+                    video_fmt["url"], video_part, budget
+                )
+                spent += self._fetch_to_file(
+                    audio_fmt["url"], audio_part, budget - spent
+                )
+                muxed = parts_dir / "source.mp4"
+                if not self._mux_media_parts(video_part, audio_part, muxed):
+                    continue
+                final = dest_dir / "source.mp4"
+                shutil.move(str(muxed), str(final))
+                return final, f"invidious-{height}"
+            except Exception:
+                continue
+            finally:
+                shutil.rmtree(parts_dir, ignore_errors=True)
+        return None
 
     def _fetch_caption_track(self, info: dict, dest_dir: Path):
         """Fetch the chosen caption track straight from the pass-1

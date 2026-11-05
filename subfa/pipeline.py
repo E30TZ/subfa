@@ -83,7 +83,7 @@ class JobResult:
     tone_requested: str = "auto"
     tone_resolved: str = ""
     caption_track: str = ""  # e.g. "automatic en", "" for whisper jobs
-    media_route: str = ""  # "standard" / "android-360" for link jobs
+    media_route: str = ""  # "standard" / "invidious-<h>" / "android-360"
     text_source: str = ""  # "published captions" / "auto captions" / "ASR"
 
 

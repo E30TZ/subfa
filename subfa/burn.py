@@ -13,10 +13,13 @@ Two things keep the rendering identical and readable on every host:
   system installed font and no host path is embedded in the filter
   string (a raw Windows path there breaks ffmpeg's filter parser).
 - Font size and margins scale with the actual output frame height
-  (cinema targets about 5 percent of the frame height). A fixed
+  (cinema targets about 8 percent of the frame height). A fixed
   PlayRes tuned for tall videos would shrink the text to nothing on
   a 360p output; sizing from the real height keeps subtitles legible
-  at every resolution.
+  at every resolution, phones included.
+- The cinema and reels styles draw the text bold on a semi-opaque
+  black backing box (ASS BorderStyle 3), so the lines stay readable
+  on bright or busy scenes instead of relying on a thin outline.
 """
 
 from __future__ import annotations
@@ -44,19 +47,27 @@ REFERENCE_HEIGHT = 720
 # Style presets. cinema is the safe default for landscape video;
 # reels moves text up into the 9:16 safe area, bold and larger;
 # learning shrinks the source line above the translation in
-# bilingual cues. Font stays Vazirmatn for Persian presets.
+# bilingual cues. Font stays Vazirmatn for Persian presets, rendered
+# bold: at phone sizes the regular weight reads thin. cinema and
+# reels sit on a semi-opaque black backing box (BorderStyle 3,
+# BackColour alpha 0x80, about 50 percent transparent) so the text
+# pops on any scene; with BorderStyle 3 the Outline field is the
+# box padding, not a text outline.
 STYLE_PRESETS = {
     "cinema": {
-        "font_size": 22, "font_frac": 0.050, "outline": 3, "shadow": 0,
-        "bold": 0, "margin_v": 30, "margin_frac": 0.042, "alignment": 2,
+        "font_size": 58, "font_frac": 0.080, "outline": 3, "shadow": 0,
+        "bold": 1, "margin_v": 30, "margin_frac": 0.042, "alignment": 2,
+        "border_style": 3, "back_colour": "&H80000000",
     },
     "reels": {
         "font_size": 26, "font_frac": 0.059, "outline": 3, "shadow": 1,
         "bold": 1, "margin_v": 170, "margin_frac": 0.236, "alignment": 2,
+        "border_style": 3, "back_colour": "&H80000000",
     },
     "learning": {
-        "font_size": 20, "font_frac": 0.045, "outline": 2, "shadow": 0,
-        "bold": 0, "margin_v": 36, "margin_frac": 0.050, "alignment": 2,
+        "font_size": 52, "font_frac": 0.072, "outline": 2, "shadow": 0,
+        "bold": 1, "margin_v": 36, "margin_frac": 0.050, "alignment": 2,
+        "border_style": 1, "back_colour": "&H64000000",
     },
 }
 DEFAULT_STYLE = "cinema"
@@ -67,7 +78,7 @@ def _style_metrics(preset: dict, frame_height: int | None) -> tuple[int, int, in
 
     Without a frame height the reference values are used as-is. With
     one, the size comes from the preset's fraction of the height
-    (cinema: about 5 percent), so a 360p video gets proportionally
+    (cinema: about 8 percent), so a 360p video gets proportionally
     the same on-screen text as a 1080p one.
     """
     if frame_height is None:
@@ -141,7 +152,8 @@ def cues_to_ass(
         "ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
         "Alignment, MarginL, MarginR, MarginV, Encoding\n"
         f"Style: Default,{font},{font_size},&H00FFFFFF,&H000000FF,"
-        f"&H00000000,&H64000000,{preset['bold']},0,0,0,100,100,0,0,1,"
+        f"&H00000000,{preset['back_colour']},{preset['bold']},0,0,0,"
+        f"100,100,0,0,{preset['border_style']},"
         f"{outline},{preset['shadow']},{preset['alignment']},"
         f"10,10,{margin_v},1\n"
         "\n"
@@ -212,12 +224,21 @@ def build_burn_command(
     With max_height set, a scale filter runs first and caps the
     output height; min() means a shorter source is never upscaled.
     The subtitles are drawn after scaling, at the output size.
+
+    The chain opens with setsar=1 so the display aspect geometry of
+    the source is preserved exactly (some phone-shot sources carry a
+    non-square sample aspect that players otherwise stretch). The
+    video is re-encoded with explicit rate control (libx264 CRF 18,
+    preset medium, yuv420p): without it ffmpeg's defaults starved
+    the output bitrate on low-resolution sources (146 kb/s out for a
+    177 kb/s source in one measured case), softening both the scene
+    and the burned text. Audio stays stream-copied.
     """
     escaped = _escape_filter_value(Path(ass_path).name)
     ass_filter = f"ass=filename={escaped}"
     if fonts:
         ass_filter += ":fontsdir=."
-    filters = []
+    filters = ["setsar=1"]
     if max_height:
         filters.append(f"scale=-2:min(ih\\,{int(max_height)})")
     filters.append(ass_filter)
@@ -226,6 +247,10 @@ def build_burn_command(
         "-y",
         "-i", str(input_video),
         "-vf", ",".join(filters),
+        "-c:v", "libx264",
+        "-crf", "18",
+        "-preset", "medium",
+        "-pix_fmt", "yuv420p",
         "-c:a", "copy",
         str(output_path),
     ]
