@@ -27,7 +27,7 @@ from subfa.burn import burn_subtitles
 from subfa.config import is_video, load_settings
 from subfa.download import is_url, make_downloader
 from subfa.messages import limit_message
-from subfa.pipeline import Pipeline
+from subfa.pipeline import QUALITY_HEIGHTS, Pipeline, normalize_quality, normalize_tone
 from subfa.srt import Cue, cues_to_srt, parse_srt
 from subfa.transcribe import make_engine
 from subfa.translate import make_translator
@@ -67,7 +67,7 @@ def _cleanup_later(job_dir: Path) -> None:
 
 def _run_job(job_id: str, kind: str, value: str, saved_file: Path | None,
              target: str, glossary_names: list[str], burn: bool, bilingual: bool,
-             style: str) -> None:
+             style: str, quality: str, tone: str) -> None:
     job_dir = Path(JOBS[job_id]["dir"])
 
     def progress(stage: str, fraction: float, note: str) -> None:
@@ -85,12 +85,12 @@ def _run_job(job_id: str, kind: str, value: str, saved_file: Path | None,
             _set_job(job_id, media_path=str(saved_file))
             result = pipeline.run_file(
                 saved_file, job_dir / "out", target, "auto",
-                glossary_names, burn, bilingual, style,
+                glossary_names, burn, bilingual, style, quality, tone,
             )
         else:
             result = pipeline.run_url(
                 value, job_dir / "out", job_dir / "download", target,
-                "auto", glossary_names, burn, bilingual, style,
+                "auto", glossary_names, burn, bilingual, style, quality, tone,
             )
             downloads = list((job_dir / "download").glob("*"))
             media = next(
@@ -106,6 +106,8 @@ def _run_job(job_id: str, kind: str, value: str, saved_file: Path | None,
             fraction=1.0,
             path_used=result.path_used,
             title=result.title,
+            tone_resolved=result.tone_resolved,
+            caption_track=result.caption_track,
             outputs={k: str(p) for k, p in result.outputs.items()},
             report=result.report.to_dict() if result.report else None,
         )
@@ -145,6 +147,8 @@ async def create_job(
     burn: bool = Form(default=False),
     bilingual: bool = Form(default=False),
     style: str = Form(default="cinema"),
+    quality: str = Form(default="720"),
+    tone: str = Form(default="auto"),
 ):
     filename = file.filename if file and file.filename else None
     try:
@@ -166,16 +170,20 @@ async def create_job(
 
     if style not in ("cinema", "reels", "learning"):
         style = "cinema"
+    quality = normalize_quality(quality)
+    tone = normalize_tone(tone)
     with JOBS_LOCK:
         JOBS[job_id] = {
             "status": "running", "stage": "start", "fraction": 0.0,
             "dir": str(job_dir), "outputs": {}, "style": style,
+            "quality": quality, "tone": tone, "tone_resolved": "",
+            "caption_track": "",
             "media_path": None, "report": None,
         }
     glossary_names = [g.strip() for g in glossary.split(",") if g.strip()]
     thread = threading.Thread(
         target=_run_job,
-        args=(job_id, kind, value, saved_file, target, glossary_names, burn, bilingual, style),
+        args=(job_id, kind, value, saved_file, target, glossary_names, burn, bilingual, style, quality, tone),
         daemon=True,
     )
     thread.start()
@@ -195,6 +203,10 @@ def job_status(job_id: str):
             "path_used": job.get("path_used"),
             "title": job.get("title", ""),
             "error": job.get("error"),
+            "quality": job.get("quality", ""),
+            "tone": job.get("tone", ""),
+            "tone_resolved": job.get("tone_resolved", ""),
+            "caption_track": job.get("caption_track", ""),
             "outputs": sorted(job.get("outputs", {}).keys()),
             "report": job.get("report"),
         }
@@ -289,6 +301,7 @@ def reburn(job_id: str, kind: str = "srt"):
             font=settings.subtitle_font,
             work_dir=out_dir / "_work",
             style=job.get("style", "cinema"),
+            max_height=QUALITY_HEIGHTS.get(job.get("quality", "720")),
         )
     except SubfaError as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
