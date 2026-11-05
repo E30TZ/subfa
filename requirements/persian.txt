@@ -1,0 +1,7 @@
+# Persian fine-tuned ASR engine (transformers backend for
+# nezamisafa/whisper-persian-v4). torch is large; on CPU-only
+# machines install the CPU wheel first:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+transformers>=4.40
+torch>=2.0
+safetensors>=0.4

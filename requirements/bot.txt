@@ -1,0 +1,2 @@
+-r core.txt
+python-telegram-bot>=21.0
