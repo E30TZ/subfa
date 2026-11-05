@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "subfa"
+version = "0.1.0"
+description = "SubFa: send a video or audio file, get Persian subtitles. Local transcription, offline translation, Telegram bot, web page and CLI."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [{ name = "SubFa contributors" }]
+dependencies = [
+    "faster-whisper>=1.0",
+    # faster-whisper 1.2 calls PyAV with a keyword removed in av 13+;
+    # pin until faster-whisper supports newer PyAV (found in smoke test).
+    "av>=11,<13",
+    "yt-dlp>=2024.8",
+]
+
+[project.optional-dependencies]
+bot = ["python-telegram-bot>=21.0"]
+web = ["fastapi>=0.110", "uvicorn>=0.29", "python-multipart>=0.0.9"]
+translate = ["argostranslate>=1.9"]
+# Persian fine-tuned ASR engine (transformers backend). torch is
+# large; install the CPU wheel first where no GPU is present.
+persian = ["transformers>=4.40", "torch>=2.0", "safetensors>=0.4"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+subfa = "subfa.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["subfa*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

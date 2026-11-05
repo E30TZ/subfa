@@ -1,0 +1,18 @@
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - SUBFA_MODEL=${SUBFA_MODEL:-small}
+      - SUBFA_TRANSLATOR=${SUBFA_TRANSLATOR:-argos}
+    restart: unless-stopped
+
+  bot:
+    build: .
+    command: python -m bot.bot
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN:?Set BOT_TOKEN in your .env file}
+      - SUBFA_MODEL=${SUBFA_MODEL:-small}
+      - SUBFA_TRANSLATOR=${SUBFA_TRANSLATOR:-argos}
+    restart: unless-stopped
