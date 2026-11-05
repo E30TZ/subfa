@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="SubFa">
+  <rect width="512" height="512" fill="#0D1218"/>
+  <g transform="translate(107 107) scale(1.2417)">
+  <rect x="60.0" y="67.2" width="120.0" height="24.0" rx="12.0" fill="#FFFFFF"/>
+  <rect x="60.0" y="112.8" width="79.2" height="24.0" rx="12.0" fill="#FFFFFF"/>
+  <rect x="60.0" y="158.4" width="120.0" height="24.0" rx="12.0" fill="#F2B705"/>
+  </g>
+</svg>
