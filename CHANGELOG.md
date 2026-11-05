@@ -2,6 +2,24 @@
 
 All notable changes to SubFa are documented here.
 
+## [0.2.1] - 2026-11-05
+
+### Added
+- YouTube downloads at up to 1080p and beyond: when YouTube's own
+  servers refuse datacenter clients (the usual case on a VPS), SubFa
+  now fetches the media through public Invidious community instances
+  and muxes the best video and audio streams under the chosen quality
+  cap, preferring h264. Instances are tried in order and the 360p
+  Android route remains as the final fallback. The instance list is
+  configurable with `SUBFA_INVIDIOUS_INSTANCES`, and the route can be
+  disabled with `SUBFA_DISABLE_INVIDIOUS=1`.
+
+### Changed
+- Burned subtitles are substantially larger and easier to read on a
+  phone: cinema style is now 8 percent of the frame height in
+  Vazirmatn Bold on a semi-opaque black box, and the burn encode uses
+  libx264 CRF 18 with the display aspect ratio pinned (`setsar=1`).
+
 ## [0.2.0] - 2026-11-05
 
 ### Added
