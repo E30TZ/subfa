@@ -1,10 +1,16 @@
+<div align="center">
+
 # SubFa
+
+**Send a file, or paste a video link, get Persian subtitles back.**
+
+English | [فارسی](README.fa.md)
 
 [![CI](https://github.com/E30TZ/subfa/actions/workflows/ci.yml/badge.svg)](https://github.com/E30TZ/subfa/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/github/license/E30TZ/subfa)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 
-**Send a file, or paste a video link, get Persian subtitles back.**
+</div>
 
 SubFa turns a video or audio file into subtitles on your own machine:
 a subtitle file in the target language (Persian by default), a
@@ -12,12 +18,18 @@ bilingual subtitle file, a plain transcript, and, for videos, a copy
 with the subtitles burned in. No account, no uploads to strangers,
 no per minute fees.
 
-Persian version of this page: [README.fa.md](README.fa.md)
-
 Demo (from the real smoke test in `smoke/SMOKE.md`: a synthetic
 English speech clip, transcribed locally by Whisper tiny, burned in):
 
 ![SubFa demo](assets/demo.gif)
+
+## Try it
+
+| Surface | How |
+| --- | --- |
+| Telegram bot | Run `BOT_TOKEN=your-token-from-botfather python -m bot.bot`, then send the bot a media file or a video link |
+| Web page | Run `uvicorn web.app:app --host 0.0.0.0 --port 8000` and open the page |
+| CLI | `subfa lecture.mp4 --target fa --burn -o out/` |
 
 ## What it does
 
@@ -37,12 +49,30 @@ English speech clip, transcribed locally by Whisper tiny, burned in):
   faster-whisper with `large-v3-turbo` and anti-hallucination
   decoding. Routing is automatic; the full decision record is in
   [docs/ASR.md](docs/ASR.md).
+
+  Measured, not promised (Persian, FLEURS test set):
+
+  | Engine | WER | Source |
+  | --- | --- | --- |
+  | nezamisafa/whisper-persian-v4 (SubFa default for fa) | 13.18% | PESTE benchmark |
+  | Stock Whisper large-v3 | 20.37% | PESTE benchmark |
+  | Stock Whisper small | 58.6% mean | Measured on this project's hardware, 3 clips ([smoke/ASR-BENCH.md](smoke/ASR-BENCH.md)) |
 - **Offline translation** with Argos Translate. After a one time
   model download, translation works with no network at all.
 - **Glossaries** fix technical terms: one JSON file per topic, applied
   after translation. Starters included: general, programming, gaming.
 - **Outputs:** `name.fa.srt`, `name.bilingual.srt`,
   `name.transcript.txt`, and `name.subbed.mp4` for videos.
+
+```mermaid
+flowchart LR
+    A["Media file or video link"] --> B{"Published captions in the source language?"}
+    B -->|Yes| E["Translate with context and glossaries"]
+    B -->|No| D["Speech recognition, routed by language: Persian fine-tuned model for Persian, large-v3-turbo for the rest"]
+    D --> E
+    E --> F["Subtitle craft: cue rules and Persian text cleanup"]
+    F --> G["SRT, bilingual SRT, transcript, burned-in video"]
+```
 
 ## Quick start
 
@@ -98,6 +128,44 @@ docker compose up bot     # needs BOT_TOKEN in .env
 Build with `--build-arg BUNDLE_MODELS=1` to download the speech
 models into the image at build time, so the container never
 downloads anything at runtime.
+
+## Run on Windows, macOS, Linux
+
+SubFa runs the same on all three systems. You need Python 3.10+
+and ffmpeg on your PATH; only the install commands differ.
+
+**1. Install ffmpeg**
+
+- Windows: `winget install Gyan.FFmpeg` (or `choco install ffmpeg`,
+  or the builds from ffmpeg.org)
+- macOS: `brew install ffmpeg`
+- Linux (Debian/Ubuntu): `sudo apt install ffmpeg`
+
+**2. Create a virtual environment**
+
+```bash
+python -m venv .venv
+```
+
+Activate it: Windows (PowerShell) `.venv\Scripts\Activate.ps1`
+or (cmd) `.venv\Scripts\activate.bat`; macOS and Linux
+`source .venv/bin/activate`.
+
+**3. Install and run, the same everywhere**
+
+```bash
+pip install -e ".[bot,web,translate]"
+uvicorn web.app:app --host 0.0.0.0 --port 8000
+```
+
+Or use the launcher scripts, which create and reuse `.venv`,
+install `requirements/web.txt`, and start the same web app:
+`scripts\run-web.bat` on Windows, `./scripts/run-web.sh` on macOS
+and Linux.
+
+Notes: the model cache works the same on every system (set
+`SUBFA_MODEL_CACHE` to move it), and the Docker path above is
+unchanged on all three.
 
 ## Running fully offline (Iran friendly)
 
@@ -198,6 +266,28 @@ exact translation the community wants:
 
 Adding or improving a glossary is the easiest contribution to
 SubFa: one file, no code. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## When SubFa is not the right tool
+
+A note in the spirit of projects we admire: if a YouTube video
+already has good subtitles and you only need the text, a plain
+caption downloader is simpler. SubFa is built for making finished
+Persian subtitle files (and a subtitled video) from files and
+links, fully offline. It does not do live or real-time subtitling,
+and Persian speech recognition needs roughly 6 GB of free RAM for
+the fp16 model (an int8 conversion path is documented in
+[docs/ASR.md](docs/ASR.md)). YouTube note: from datacenter IPs,
+YouTube serves subtitle tracks but not the video file itself, so
+link jobs from such hosts produce subtitle files only; send the
+file itself for the burned-in version. Details in
+[FAQ.fa.md](FAQ.fa.md).
+
+## Built on
+
+SubFa stands on excellent open source work: OpenAI Whisper and
+the Persian fine-tune by nezamisafa, faster-whisper, Argos
+Translate, yt-dlp, ffmpeg, and the Vazirmatn font by Saber
+Rastikerdar. Thank you to every maintainer.
 
 ## Roadmap
 

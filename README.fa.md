@@ -1,15 +1,23 @@
 <div dir="rtl">
 
+<div align="center">
+
 # SubFa: زیرنویس‌ساز فارسی
 
 **یک فایل بفرست، یا لینک ویدیو را بچسبان، زیرنویس فارسی تحویل بگیر.**
+
+[English](README.md) | فارسی
+
+[![CI](https://github.com/E30TZ/subfa/actions/workflows/ci.yml/badge.svg)](https://github.com/E30TZ/subfa/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/github/license/E30TZ/subfa)](LICENSE)
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+
+</div>
 
 SubFa روی کامپیوتر خودت از یک فایل ویدیویی یا صوتی زیرنویس می‌سازد:
 فایل زیرنویس به زبان مقصد (پیش‌فرض فارسی)، فایل زیرنویس دوزبانه،
 متن کامل ویدیو، و برای ویدیوها یک نسخه با زیرنویس چسبیده روی تصویر.
 بدون ساخت حساب، بدون آپلود فایل پیش غریبه‌ها، بدون هزینه به‌ازای دقیقه.
-
-نسخه انگلیسی: [README.md](README.md)
 
 ## چه کار می‌کند؟
 
@@ -113,6 +121,45 @@ docker compose up bot
 دانلود و داخل ایمیج گذاشته می‌شوند تا کانتینر موقع اجرا هیچ
 دانلودی لازم نداشته باشد.
 
+## اجرا روی ویندوز، مک و لینوکس
+
+SubFa روی هر سه سیستم یکسان اجرا می‌شود. فقط پایتون ۳٫۱۰ یا
+بالاتر و ffmpeg روی PATH لازم است؛ تنها دستورهای نصب فرق
+می‌کنند.
+
+**۱. نصب ffmpeg**
+
+- ویندوز: `winget install Gyan.FFmpeg` (یا `choco install ffmpeg`
+  یا بیلدهای سایت ffmpeg.org)
+- مک: `brew install ffmpeg`
+- لینوکس (دبیان/اوبونتو): `sudo apt install ffmpeg`
+
+**۲. ساخت محیط مجازی**
+
+```bash
+python -m venv .venv
+```
+
+فعال‌سازی: در ویندوز (پاورشل) `.venv\Scripts\Activate.ps1`
+یا (cmd) `.venv\Scripts\activate.bat`؛ در مک و لینوکس
+`source .venv/bin/activate`.
+
+**۳. نصب و اجرا، در همه سیستم‌ها یکسان**
+
+```bash
+pip install -e ".[bot,web,translate]"
+uvicorn web.app:app --host 0.0.0.0 --port 8000
+```
+
+یا از اسکریپت‌های آماده استفاده کنید که `.venv` را می‌سازند و
+دوباره استفاده می‌کنند، `requirements/web.txt` را نصب می‌کنند
+و همان وب‌اپ را اجرا می‌کنند: در ویندوز `scripts\run-web.bat`
+و در مک و لینوکس `./scripts/run-web.sh`.
+
+نکته: کش مدل‌ها در همه سیستم‌ها یکسان کار می‌کند (برای جابه‌جا
+کردنش `SUBFA_MODEL_CACHE` را تنظیم کنید) و مسیر داکر بالا در
+هر سه سیستم بدون تغییر است.
+
 ## اجرای کاملا آفلاین (مناسب ایران)
 
 تنها دانلودهایی که SubFa لازم دارد مدل‌های گفتار و ترجمه‌اند و
@@ -179,6 +226,10 @@ subfa download-models
 
 اضافه کردن یا بهتر کردن یک واژه‌نامه ساده‌ترین راه مشارکت در SubFa
 است: یک فایل، بدون کد. راهنما در [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## پرسش‌های پرتکرار
+
+جواب سوال‌های رایج (یوتیوب چرا فقط زیرنویس می‌دهد، چقدر رم لازم است، حریم خصوصی و بقیه) در [FAQ.fa.md](FAQ.fa.md) جمع شده است.
 
 ## نقشه راه
 
