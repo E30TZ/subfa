@@ -105,13 +105,31 @@ def build_burn_command(
     ass_path: str | Path,
     output_path: str | Path,
 ) -> list[str]:
-    """Build the ffmpeg command for burn-in (no shell involved)."""
-    escaped = str(ass_path).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+    """Build the ffmpeg command for burn-in (no shell involved).
+
+    The .ass file is referenced by bare filename, never by full
+    path: ffmpeg's filter parser treats quoted paths differently
+    across versions (the quoted form ass='/path/x.ass' parses on
+    ffmpeg 6/7 but is rejected by ffmpeg 8, e.g. Homebrew's, with
+    "No option name near"). burn_subtitles runs the command with
+    cwd set to the .ass directory, and only the filter-special
+    characters in the filename itself are escaped here.
+    """
+    name = Path(ass_path).name
+    escaped = (
+        name.replace("\\", "\\\\")
+        .replace(":", "\\:")
+        .replace("'", "\\'")
+        .replace(",", "\\,")
+        .replace(";", "\\;")
+        .replace("[", "\\[")
+        .replace("]", "\\]")
+    )
     return [
         "ffmpeg",
         "-y",
         "-i", str(input_video),
-        "-vf", f"ass='{escaped}'",
+        "-vf", f"ass={escaped}",
         "-c:a", "copy",
         str(output_path),
     ]
@@ -132,7 +150,9 @@ def burn_subtitles(
     ass_path = ass_dir / (output_path.stem + ".ass")
     ass_path.write_text(cues_to_ass(cues, font=font, style=style), encoding="utf-8")
     command = build_burn_command(input_video, ass_path, output_path)
-    completed = subprocess.run(command, capture_output=True, text=True)
+    completed = subprocess.run(
+        command, capture_output=True, text=True, cwd=str(ass_dir)
+    )
     if completed.returncode != 0:
         # Keep the tail of stderr, not just the last line: ffmpeg
         # puts the generic failure last and the actual cause (bad
